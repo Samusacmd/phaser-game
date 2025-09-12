@@ -14,11 +14,9 @@ new Phaser.Game(config);
 
 // stato
 let ship, cursors, bullets, enemies, lastShot = 0, score = 0, scoreText;
+let shootSound, hitSound;
+let ENEMY_SIZE_FACTOR = 3.0; // Modifica qui la grandezza dei nemici
 
-// Configura la grandezza dei nemici qui
-let ENEMY_SIZE_FACTOR = 4.0; // Metti 1.0 per normale, 2.0 per doppio, ecc
-
-// utility dimensioni
 function sizes(scene){
   const w = scene.scale.width, h = scene.scale.height;
   return { w, h, ship: w/8, enemy: w/10 * ENEMY_SIZE_FACTOR, bullet: w/30, bottomPad: Math.max(48, h*0.08) };
@@ -28,6 +26,8 @@ function preload(){
   this.load.image("ship","assets/ship.png");
   this.load.image("bullet","assets/bullet.png");
   this.load.image("enemy","assets/enemy.png");
+  this.load.audio("shoot", ["assets/shoot.mp3"]);
+  this.load.audio("hit", ["assets/hit.mp3"]);
 }
 
 function create(){
@@ -42,6 +42,9 @@ function create(){
   cursors = this.input.keyboard.createCursorKeys();
   bullets = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize: 80 });
   enemies = this.physics.add.group();
+
+  shootSound = this.sound.add("shoot");
+  hitSound = this.sound.add("hit");
 
   this.time.addEvent({
     delay: 700, loop: true, callback: () => {
@@ -58,11 +61,11 @@ function create(){
     e.disableBody(true,true);
     score++;
     scoreText.setText(String(score));
+    hitSound.play();
   });
 
   scoreText = this.add.text(8,8,"0",{ font:"16px monospace", fill:"#fff" }).setDepth(10);
 
-  // resize: scala sprite e riallinea collider
   this.scale.on("resize", () => {
     const S3 = sizes(this);
     ship.setDisplaySize(S3.ship, S3.ship);
@@ -86,21 +89,17 @@ function update(time){
 
   ship.setVelocity(0);
 
-  // Movimenti orizzontali
   if (cursors.left?.isDown) ship.setVelocityX(-200);
   else if (cursors.right?.isDown) ship.setVelocityX(200);
-
-  // Movimenti verticali
   if (cursors.up?.isDown) ship.setVelocityY(-200);
   else if (cursors.down?.isDown) ship.setVelocityY(200);
 
-  // Touch/pointer: muove nave liberamente (2D)
   if (this.input.activePointer.isDown) {
     ship.x = Phaser.Math.Clamp(this.input.activePointer.x, 16, S.w - 16);
     ship.y = Phaser.Math.Clamp(this.input.activePointer.y, 16, S.h - S.bottomPad);
   }
 
-  // spara
+  // Sparo con suono
   if ((cursors.space?.isDown || this.input.activePointer.isDown) && time > lastShot + 200){
     const b = bullets.get();
     if (b){
@@ -110,10 +109,10 @@ function update(time){
       b.refreshBody();
       b.setVelocity(0, -300);
       lastShot = time;
+      shootSound.play();
     }
   }
 
-  // pulizia proiettili
   bullets.children.iterate(b => {
     if(b?.active && (b.y < -32 || b.y > S.h + 32)) b.disableBody(true,true);
   });
