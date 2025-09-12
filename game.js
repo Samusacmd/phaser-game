@@ -1,7 +1,6 @@
 const tg = window.Telegram?.WebApp;
 tg?.ready?.();
 tg?.expand?.();
-
 const config = {
   type: Phaser.AUTO,
   parent: "game",
@@ -9,43 +8,36 @@ const config = {
   scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH },
   scene: { preload, create, update }
 };
-
 new Phaser.Game(config);
-
 // stato
 let ship, cursors, bullets, enemies, lastShot = 0, score = 0, scoreText;
-let shootSound, hitSound;
-let ENEMY_SIZE_FACTOR = 3.0; // Modifica qui la grandezza dei nemici
-
+let shootSound, hitSound, missSound;
+let ENEMY_SIZE_FACTOR = 2.5; // Modifica qui la grandezza dei nemici
 function sizes(scene){
   const w = scene.scale.width, h = scene.scale.height;
   return { w, h, ship: w/8, enemy: w/10 * ENEMY_SIZE_FACTOR, bullet: w/30, bottomPad: Math.max(48, h*0.08) };
 }
-
 function preload(){
   this.load.image("ship","assets/ship.png");
   this.load.image("bullet","assets/bullet.png");
   this.load.image("enemy","assets/enemy.png");
   this.load.audio("shoot", ["assets/shoot.mp3"]);
-  this.load.audio("hit", ["assets/hit.mp3"]);
+  this.load.audio("hit",   ["assets/hit.mp3"]);
+  this.load.audio("miss",  ["assets/miss.mp3"]); // << AGGIUNTO
 }
-
 function create(){
   const S = sizes(this);
   this.physics.world.setBounds(0,0,S.w,S.h);
-
   ship = this.physics.add.image(S.w/2, S.h - S.bottomPad, "ship")
     .setCollideWorldBounds(true)
     .setDisplaySize(S.ship, S.ship);
   ship.refreshBody();
-
   cursors = this.input.keyboard.createCursorKeys();
   bullets = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize: 80 });
   enemies = this.physics.add.group();
-
   shootSound = this.sound.add("shoot");
-  hitSound = this.sound.add("hit");
-
+  hitSound   = this.sound.add("hit");
+  missSound  = this.sound.add("miss"); // << AGGIUNTO
   this.time.addEvent({
     delay: 700, loop: true, callback: () => {
       const S2 = sizes(this);
@@ -55,7 +47,6 @@ function create(){
       e.refreshBody();
     }
   });
-
   this.physics.add.overlap(bullets, enemies, (b,e) => {
     b.disableBody(true,true);
     e.disableBody(true,true);
@@ -63,9 +54,7 @@ function create(){
     scoreText.setText(String(score));
     hitSound.play();
   });
-
   scoreText = this.add.text(8,8,"0",{ font:"16px monospace", fill:"#fff" }).setDepth(10);
-
   this.scale.on("resize", () => {
     const S3 = sizes(this);
     ship.setDisplaySize(S3.ship, S3.ship);
@@ -80,40 +69,14 @@ function create(){
     });
     scoreText.setPosition(8,8);
   });
-
   tg?.onEvent?.("viewportChanged", () => this.scale.refresh());
 }
-
 function update(time){
   const S = sizes(this);
-
   ship.setVelocity(0);
-
   if (cursors.left?.isDown) ship.setVelocityX(-200);
   else if (cursors.right?.isDown) ship.setVelocityX(200);
   if (cursors.up?.isDown) ship.setVelocityY(-200);
   else if (cursors.down?.isDown) ship.setVelocityY(200);
-
   if (this.input.activePointer.isDown) {
-    ship.x = Phaser.Math.Clamp(this.input.activePointer.x, 16, S.w - 16);
-    ship.y = Phaser.Math.Clamp(this.input.activePointer.y, 16, S.h - S.bottomPad);
-  }
-
-  // Sparo con suono
-  if ((cursors.space?.isDown || this.input.activePointer.isDown) && time > lastShot + 200){
-    const b = bullets.get();
-    if (b){
-      b.enableBody(true, ship.x, ship.y - 20, true, true)
-        .setTexture("bullet")
-        .setDisplaySize(S.bullet, S.bullet);
-      b.refreshBody();
-      b.setVelocity(0, -300);
-      lastShot = time;
-      shootSound.play();
-    }
-  }
-
-  bullets.children.iterate(b => {
-    if(b?.active && (b.y < -32 || b.y > S.h + 32)) b.disableBody(true,true);
-  });
-}
+    ship.x = Phaser
