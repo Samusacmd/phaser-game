@@ -20,6 +20,7 @@ input[type=range], input[type=number] { width:150px; }
   <label>Volume <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.5"></label>
   <label>Velocità proiettili <input type="range" id="bullet-speed-slider" min="100" max="800" value="300"></label>
   <label>Postazioni fuoco <input type="number" id="gun-count" min="1" max="5" value="1"></label>
+  <label>Dimensione esplosione <input type="range" id="explosion-scale-slider" min="0.5" max="3" step="0.1" value="1"></label>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.min.js"></script>
@@ -48,6 +49,7 @@ let enemySpeedFactor=1.0;
 // Cheat config
 let bulletSpeed=300;
 let gunCount=1;
+let explosionScale=1.0;
 
 function sizes(scene){
   const w=scene.scale.width||window.innerWidth;
@@ -59,6 +61,7 @@ function preload(){
   this.load.image("ship","assets/ship.png");
   this.load.image("bullet","assets/bullet.png");
   this.load.image("enemy","assets/enemy.png");
+  this.load.spritesheet("explosion","assets/explosion.png",{frameWidth:32,frameHeight:32});
   this.load.audio("shoot", ["assets/shoot.mp3"]);
   this.load.audio("hit", ["assets/hit.mp3"]);
   this.load.audio("miss", ["assets/miss.mp3"]);
@@ -81,9 +84,26 @@ function create(){
   missSound = this.sound.add("miss",{volume:0.5});
   gameOverSound = this.sound.add("gameover",{volume:0.5});
 
+  // Animazione esplosione
+  this.anims.create({
+    key: "explode",
+    frames: this.anims.generateFrameNumbers("explosion", { start: 0, end: 7 }),
+    frameRate: 16,
+    hideOnComplete: true
+  });
+
   this.time.addEvent({delay:700,loop:true,callback:()=>{if(!gameOver&&!paused) spawnEnemy(this);}});
 
-  this.physics.add.overlap(bullets,enemies,(b,e)=>{if(!gameOver&&!paused){b.disableBody(true,true);e.disableBody(true,true);score++;scoreText.setText("Score:"+score);hitSound.play();if(score%DIFFICULTY_STEP===0) enemySpeedFactor*=SPEED_MULTIPLIER;}});
+  this.physics.add.overlap(bullets,enemies,(b,e)=>{if(!gameOver&&!paused){
+    b.disableBody(true,true);
+    // Esplosione centrata sul nemico con scala variabile
+    const explosion = this.add.sprite(e.x,e.y,"explosion").setOrigin(0.5).setDepth(20);
+    explosion.setScale(explosionScale);
+    explosion.play("explode");
+    e.disableBody(true,true);
+    score++; scoreText.setText("Score:"+score); hitSound.play();
+    if(score % DIFFICULTY_STEP === 0) enemySpeedFactor *= SPEED_MULTIPLIER;
+  }});
 
   scoreText=this.add.text(8,8,"Score:0",{font:"16px monospace",fill:"#fff"}).setDepth(10).setScrollFactor(0);
   livesText=this.add.text(8,28,"Lives:"+lives,{font:"16px monospace",fill:"#fff"}).setDepth(10).setScrollFactor(0);
@@ -93,7 +113,7 @@ function create(){
   pauseButton.on("pointerdown",()=>togglePause(this));
   this.input.keyboard.on("keydown-P",()=>togglePause(this));
 
-  this.scale.on("resize",()=>{const S3=sizes(this); ship.setDisplaySize(S3.ship,S3.ship); ship.y=S3.h-S3.bottomPad; ship.x=Phaser.Math.Clamp(ship.x,16,S3.w-16); pauseText.setPosition(S3.w/2,S3.h/2); pauseButton.setPosition(S3.w-48,10); enemies.children.iterate(e=>{if(e?.active)e.setDisplaySize(S3.enemy,S3.enemy);}); bullets.children.iterate(b=>{if(b?.active)b.setDisplaySize(S3.bullet,S3.bullet);}); scoreText.setFontSize(Math.max(14,S3.w/40)).setPosition(8,8); livesText.setFontSize(Math.max(14,S3.w/40)).setPosition(8,28);});
+  this.scale.on("resize",()=>{const S3=sizes(this); ship.setDisplaySize(S3.ship,S3.ship); ship.y=S3.h-S3.bottomPad; ship.x=Phaser.Math.Clamp(ship.x,16,S3.w-16); pauseText.setPosition(S3.w/2,S3.h/2); pauseButton.setPosition(S3.w-48,10); enemies.children.iterate(e=>{if(e?.active)e.setDisplaySize(S3.enemy,S3.enemy);}); bullets.children.iterate(b=>{if(b?.active)b.setDisplaySize(S3.bullet,sizes(this).bullet);}); scoreText.setFontSize(Math.max(14,S3.w/40)).setPosition(8,8); livesText.setFontSize(Math.max(14,S3.w/40)).setPosition(8,28);});
 }
 
 // Volume e mute
@@ -108,6 +128,8 @@ const bulletSpeedSlider=document.getElementById("bullet-speed-slider");
 bulletSpeedSlider.addEventListener("input",e=>{bulletSpeed=parseInt(e.target.value);});
 const gunCountInput=document.getElementById("gun-count");
 gunCountInput.addEventListener("input",e=>{gunCount=Math.min(5,Math.max(1,parseInt(e.target.value)));});
+const explosionScaleSlider=document.getElementById("explosion-scale-slider");
+explosionScaleSlider.addEventListener("input",e=>{explosionScale=parseFloat(e.target.value);});
 
 function update(time){
   if(gameOver||paused) return;
@@ -119,7 +141,7 @@ function update(time){
 
   const fireInput=cursors.space?.isDown || (this.input.activePointer.isDown&&!cursors.left?.isDown&&!cursors.right?.isDown);
   if(fireInput && time>lastShot+200){
-    const spread = 15; // ampiezza ventaglio
+    const spread = 15;
     for(let i=0;i<gunCount;i++){
       const offset=(i-(gunCount-1)/2)*spread;
       const b=bullets.get(ship.x,ship.y-20);
@@ -170,7 +192,6 @@ function triggerGameOver(scene){
   list.sort((a,b)=>b.score-a.score);
   list=list.slice(0,10);
   localStorage.setItem(KEY,JSON.stringify(list));
-
   const hsText=list.map((r,i)=>`${i+1}. ${r.score}`).join("\n");
   const highScores=scene.add.text(cx,cy-20,"Top 10:\n"+hsText,{font:"16px monospace",fill:"#ffff00",align:"center"}).setOrigin(0.5).setDepth(21);
   gameOverElements.push(highScores);
