@@ -1,4 +1,4 @@
-// Phaser + Telegram WebApp - Gioco spaziale completo
+// Phaser + Telegram WebApp - Gioco spaziale completo con pausa
 const tg = window.Telegram?.WebApp;
 tg?.ready?.();
 tg?.expand?.();
@@ -18,6 +18,9 @@ let ship, cursors, bullets, enemies, lastShot = 0, score = 0, scoreText, lives =
 let shootSound, hitSound, missSound, gameOverSound, lastMissSound = 0;
 let gameOver = false;
 let gameOverElements = []; // per pulire overlay al restart
+let isPaused = false; // nuovo stato pausa
+let pauseText;
+
 const ENEMY_SIZE_FACTOR = 3.0; // grandezza nemici
 
 function sizes(scene){
@@ -47,6 +50,7 @@ function create(){
 
   // input
   cursors = this.input.keyboard.createCursorKeys();
+  this.input.keyboard.on('keydown-P', () => togglePause(this)); // tasto P per pausa
 
   // gruppi
   bullets = this.physics.add.group({
@@ -73,7 +77,7 @@ function create(){
     delay: 700,
     loop: true,
     callback: () => {
-      if (!gameOver){
+      if (!gameOver && !isPaused){
         spawnEnemy(this);
       }
     }
@@ -81,8 +85,7 @@ function create(){
 
   // collisione proiettili -> nemici
   this.physics.add.overlap(bullets, enemies, (b,e) => {
-    if (!gameOver){
-      // disattiva entrambi
+    if (!gameOver && !isPaused){
       b.disableBody(true,true);
       e.disableBody(true,true);
       score++;
@@ -95,6 +98,9 @@ function create(){
   scoreText = this.add.text(8,8,"Score: 0",{ font:"16px monospace", fill:"#fff", align:"left" }).setDepth(10).setScrollFactor(0);
   livesText = this.add.text(8,28,"Lives: " + lives,{ font:"16px monospace", fill:"#fff", align:"left" }).setDepth(10).setScrollFactor(0);
 
+  pauseText = this.add.text(S.w/2, S.h/2, 'PAUSE', { font: '32px monospace', fill: '#ffff00' }).setOrigin(0.5).setDepth(50);
+  pauseText.setVisible(false);
+
   // resize
   this.scale.on("resize", () => {
     const S3 = sizes(this);
@@ -106,32 +112,28 @@ function create(){
     bullets.children.iterate(b => { if(b?.active) b.setDisplaySize(S3.bullet, S3.bullet); });
     scoreText.setFontSize(Math.max(14, S3.w/40)).setPosition(8,8);
     livesText.setFontSize(Math.max(14, S3.w/40)).setPosition(8,28);
+    pauseText.setPosition(S3.w/2, S3.h/2);
   });
 
-  // Telegram viewport event
   tg?.onEvent?.("viewportChanged", () => this.scale.refresh());
 }
 
 function update(time){
-  if (gameOver) return;
+  if (gameOver || isPaused) return;
   const S = sizes(this);
 
-  // reset velocità
   ship.setVelocity(0);
 
-  // Movimento con tastiera
   if (cursors.left?.isDown) ship.setVelocityX(-200);
   else if (cursors.right?.isDown) ship.setVelocityX(200);
   if (cursors.up?.isDown) ship.setVelocityY(-200);
   else if (cursors.down?.isDown) ship.setVelocityY(200);
 
-  // Movimento con touch/mouse (override posizione)
   if (this.input.activePointer.isDown) {
     ship.x = Phaser.Math.Clamp(this.input.activePointer.x, 16, S.w - 16);
     ship.y = Phaser.Math.Clamp(this.input.activePointer.y, 16, S.h - S.bottomPad);
   }
 
-  // Sparo (barra spazio) o clic rapido (se il puntatore non viene usato per il movimento continuo)
   const fireInput = cursors.space?.isDown || (this.input.activePointer.isDown && !cursors.left?.isDown && !cursors.right?.isDown);
   if (fireInput && time > lastShot + 200){
     const b = bullets.get();
@@ -144,34 +146,28 @@ function update(time){
     }
   }
 
-  // Pulizia proiettili fuori schermo (senza suono)
   bullets.children.iterate(b => {
     if(b?.active && (b.y < -32 || b.y > S.h + 32)){
       b.disableBody(true,true);
     }
   });
 
-  // Controllo nemici che oltrepassano la linea sotto la nave → vita -1, suono miss e possibile game over
   enemies.children.iterate(e => {
-    if(e?.active){
-      // se il centro del nemico passa sotto la parte inferiore della nave consideriamo perso
-      if (e.y > ship.y + (ship.displayHeight/2)){
-        e.disableBody(true,true);
-        if(time > lastMissSound + 300){
-          missSound.play({ volume: 0.8 });
-          lastMissSound = time;
-        }
-        lives--;
-        livesText.setText("Lives: " + lives);
-        if (lives <= 0){
-          triggerGameOver(this);
-        }
+    if(e?.active && e.y > ship.y + (ship.displayHeight/2)){
+      e.disableBody(true,true);
+      if(time > lastMissSound + 300){
+        missSound.play({ volume: 0.8 });
+        lastMissSound = time;
+      }
+      lives--;
+      livesText.setText("Lives: " + lives);
+      if (lives <= 0){
+        triggerGameOver(this);
       }
     }
   });
 }
 
-// --- Helper: spawn nemico ---
 function spawnEnemy(scene){
   const S = sizes(scene);
   const x = Phaser.Math.Between(20, S.w - 20);
@@ -183,7 +179,6 @@ function spawnEnemy(scene){
   e.body?.setVelocity(0, vy) || e.setVelocity(0, vy);
 }
 
-// --- Salvataggio punteggio in localStorage ---
 function saveScoreToLocal(score){
   try{
     const KEY = 'phaser_telegram_highscores';
@@ -194,13 +189,9 @@ function saveScoreToLocal(score){
     const top = list.slice(0,10);
     localStorage.setItem(KEY, JSON.stringify(top));
     return top;
-  }catch(e){
-    console.warn('saveScoreToLocal failed', e);
-    return [];
-  }
+  }catch(e){ return []; }
 }
 
-// --- Mostra high scores (overlay) ---
 function displayHighScores(scene, highscores){
   const w = scene.scale.width, h = scene.scale.height;
   const boxW = Math.min(600, w*0.8), boxH = Math.min(400, h*0.6);
@@ -219,23 +210,15 @@ function displayHighScores(scene, highscores){
   });
 }
 
-// --- Trigger game over ---
 function triggerGameOver(scene){
   if (gameOver) return;
   gameOver = true;
 
-  // salva punteggio
   const highs = saveScoreToLocal(score);
+  try{ if (tg?.sendData) tg.sendData(JSON.stringify({ type: 'game_over', score })); }catch(e){}
 
-  // invia al bot (se WebApp disponibile)
-  try{
-    if (tg?.sendData) tg.sendData(JSON.stringify({ type: 'game_over', score }));
-  }catch(e){ console.warn('tg.sendData failed', e); }
-
-  // suono game over
   gameOverSound.play();
 
-  // overlay
   const centerX = scene.scale.width/2, centerY = scene.scale.height/2;
   const overlayBg = scene.add.rectangle(centerX, centerY, scene.scale.width, scene.scale.height, 0x000000, 0.5).setDepth(20);
   gameOverElements.push(overlayBg);
@@ -244,45 +227,39 @@ function triggerGameOver(scene){
   const scoreTextGO = scene.add.text(centerX, centerY - 16, 'Score: ' + score, { font: '20px monospace', fill: '#ffffff' }).setOrigin(0.5).setDepth(21);
   gameOverElements.push(scoreTextGO);
 
-  // mostra high scores
   displayHighScores(scene, highs);
 
-  // restart button
   const restart = scene.add.text(centerX, centerY + 120, 'Restart', { font: '20px monospace', fill: '#00ff00', backgroundColor: '#003300', padding: { x: 12, y: 8 } }).setOrigin(0.5).setDepth(30).setInteractive({ useHandCursor: true });
-  restart.on('pointerdown', () => {
-    restartGame(scene);
-  });
+  restart.on('pointerdown', () => restartGame(scene));
   gameOverElements.push(restart);
 }
 
-// --- Restart ---
 function restartGame(scene){
-  // rimuovi overlay
   gameOverElements.forEach(g => g.destroy());
   gameOverElements.length = 0;
 
-  // reset stato
   lives = 5;
   score = 0;
   scoreText.setText('Score: ' + score);
   livesText.setText('Lives: ' + lives);
   gameOver = false;
+  isPaused = false;
+  pauseText.setVisible(false);
 
-  // rimuovi oggetti esistenti
   enemies.clear(true, true);
   bullets.clear(true, true);
 
-  // recentra nave
   const S = sizes(scene);
   ship.setPosition(S.w/2, S.h - S.bottomPad);
 }
 
-// --- Utility: leggi high scores ---
-function readHighScores(){
-  try{
-    const KEY = 'phaser_telegram_highscores';
-    return JSON.parse(localStorage.getItem(KEY) || '[]');
-  }catch(e){ return []; }
+function togglePause(scene){
+  if (gameOver) return;
+  isPaused = !isPaused;
+  pauseText.setVisible(isPaused);
+  if (isPaused){
+    ship.setVelocity(0);
+    enemies.children.iterate(e => e?.setVelocity(0,0));
+    bullets.children.iterate(b => b?.setVelocity(0,0));
+  }
 }
-
-// Fine del file
