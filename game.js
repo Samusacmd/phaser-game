@@ -108,7 +108,7 @@ function update(time){
     ship.y = Phaser.Math.Clamp(this.input.activePointer.y, 16, S.h - S.bottomPad);
   }
 
-  // Sparo (spazio = tastiera, click = solo se click non usato per muovere)
+  // Sparo
   const fireInput = cursors.space?.isDown || (this.input.activePointer.isDown && !cursors.left?.isDown && !cursors.right?.isDown);
   if (fireInput && time > lastShot + 200){
     const b = bullets.get(ship.x, ship.y - 20);
@@ -121,12 +121,19 @@ function update(time){
     }
   }
 
-  // Pulizia proiettili + suono "miss" limitato
+  // Pulizia proiettili (senza suono miss)
   bullets.children.iterate(b => {
     if(b?.active && (b.y < -32 || b.y > S.h + 32)){
       b.disableBody(true,true);
-      if(time > lastMissSound + 150){ // evita spam
-        missSound.play({ volume: 0.6 });
+    }
+  });
+
+  // Controllo nemici che oltrepassano la nave → suono miss
+  enemies.children.iterate(e => {
+    if(e?.active && e.y > ship.y + 20){
+      e.disableBody(true,true);
+      if(time > lastMissSound + 300){
+        missSound.play({ volume: 0.8 });
         lastMissSound = time;
       }
     }
