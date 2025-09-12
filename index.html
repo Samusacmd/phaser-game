@@ -1,22 +1,25 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="it">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Space Game - Phaser 3</title>
 <style>
 html,body { height:100%; margin:0; background:#000; color:#fff; font-family: monospace; }
-#game { width:100%; height:100vh; overflow:hidden; }
+#game { width:100%; height:100vh; overflow:hidden; position:relative; }
 .pause-ui { position:absolute; top:50px; right:50px; display:flex; flex-direction:column; gap:8px; color:#fff; font-family: monospace; }
-button { font-family: monospace; padding:4px 8px; background:#333; color:#fff; border:none; cursor:pointer; }
-input[type=range] { width:150px; }
+button,input { font-family: monospace; padding:4px 8px; background:#333; color:#fff; border:none; cursor:pointer; }
+input[type=range], input[type=number] { width:150px; }
+.highscores { font-size:14px; margin-top:10px; text-align:left; }
 </style>
 </head>
 <body>
 <div id="game"></div>
 <div class="pause-ui" id="pause-ui" style="display:none;">
   <button id="mute-btn">🔊</button>
-  <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.5">
+  <label>Volume <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.5"></label>
+  <label>Velocità proiettili <input type="range" id="bullet-speed-slider" min="100" max="800" value="300"></label>
+  <label>Postazioni fuoco <input type="number" id="gun-count" min="1" max="5" value="1"></label>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.min.js"></script>
@@ -29,23 +32,27 @@ const config = {
   scene: { preload, create, update }
 };
 
-new Phaser.Game(config);
+const gameInstance = new Phaser.Game(config);
+window.game = gameInstance;
 
-// Stato globale
-let ship, cursors, bullets, enemies, lastShot = 0, score = 0, scoreText, lives = 5, livesText;
-let shootSound, hitSound, missSound, gameOverSound, lastMissSound = 0;
-let gameOver = false, paused = false;
+let ship, cursors, bullets, enemies, lastShot=0, score=0, scoreText, lives=5, livesText;
+let shootSound, hitSound, missSound, gameOverSound, lastMissSound=0;
+let gameOver=false, paused=false;
 let pauseText, pauseButton;
-let gameOverElements = [];
-const ENEMY_SIZE_FACTOR = 3.0;
-const DIFFICULTY_STEP = 100;
-const SPEED_MULTIPLIER = 1.2;
-let enemySpeedFactor = 1.0;
+let gameOverElements=[];
+const ENEMY_SIZE_FACTOR=3.0;
+const DIFFICULTY_STEP=100;
+const SPEED_MULTIPLIER=1.2;
+let enemySpeedFactor=1.0;
+
+// Cheat config
+let bulletSpeed=300;
+let gunCount=1;
 
 function sizes(scene){
-  const w = scene.scale.width || window.innerWidth;
-  const h = scene.scale.height || window.innerHeight;
-  return { w, h, ship: w/8, enemy: (w/10)*ENEMY_SIZE_FACTOR, bullet: w/30, bottomPad: Math.max(48,h*0.08) };
+  const w=scene.scale.width||window.innerWidth;
+  const h=scene.scale.height||window.innerHeight;
+  return { w,h, ship:w/8, enemy:(w/10)*ENEMY_SIZE_FACTOR, bullet:w/30, bottomPad:Math.max(48,h*0.08) };
 }
 
 function preload(){
@@ -62,87 +69,101 @@ function create(){
   const S = sizes(this);
   this.physics.world.setBounds(0,0,S.w,S.h);
 
-  ship = this.physics.add.image(S.w/2, S.h - S.bottomPad, "ship").setCollideWorldBounds(true).setDisplaySize(S.ship,S.ship);
+  ship = this.physics.add.image(S.w/2,S.h-S.bottomPad,"ship").setCollideWorldBounds(true).setDisplaySize(S.ship,S.ship);
+
   cursors = this.input.keyboard.createCursorKeys();
 
-  bullets = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize:80,
-    createCallback: b => b.setDisplaySize(S.bullet,S.bullet).setTexture("bullet")});
+  bullets = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize:80 });
   enemies = this.physics.add.group();
 
-  shootSound = this.sound.add("shoot", {volume:0.5});
-  hitSound   = this.sound.add("hit",{volume:0.5});
-  missSound  = this.sound.add("miss",{volume:0.5});
+  shootSound = this.sound.add("shoot",{volume:0.5});
+  hitSound = this.sound.add("hit",{volume:0.5});
+  missSound = this.sound.add("miss",{volume:0.5});
   gameOverSound = this.sound.add("gameover",{volume:0.5});
 
-  this.time.addEvent({delay:700,loop:true,callback:()=>{ if(!gameOver&&!paused) spawnEnemy(this); }});
+  this.time.addEvent({delay:700,loop:true,callback:()=>{if(!gameOver&&!paused) spawnEnemy(this);}});
+
   this.physics.add.overlap(bullets,enemies,(b,e)=>{if(!gameOver&&!paused){b.disableBody(true,true);e.disableBody(true,true);score++;scoreText.setText("Score:"+score);hitSound.play();if(score%DIFFICULTY_STEP===0) enemySpeedFactor*=SPEED_MULTIPLIER;}});
 
-  scoreText = this.add.text(8,8,"Score: 0",{font:"16px monospace",fill:"#fff"}).setDepth(10).setScrollFactor(0);
-  livesText = this.add.text(8,28,"Lives: "+lives,{font:"16px monospace",fill:"#fff"}).setDepth(10).setScrollFactor(0);
+  scoreText=this.add.text(8,8,"Score:0",{font:"16px monospace",fill:"#fff"}).setDepth(10).setScrollFactor(0);
+  livesText=this.add.text(8,28,"Lives:"+lives,{font:"16px monospace",fill:"#fff"}).setDepth(10).setScrollFactor(0);
 
-  pauseText = this.add.text(S.w/2,S.h/2,"PAUSE",{font:"32px monospace",fill:"#ffff00"}).setOrigin(0.5).setDepth(50).setVisible(false);
-  pauseButton = this.add.text(S.w-48,10,"II",{font:"28px monospace",fill:"#fff"}).setInteractive().setDepth(15);
+  pauseText=this.add.text(S.w/2,S.h/2,"PAUSE",{font:"32px monospace",fill:"#ffff00"}).setOrigin(0.5).setDepth(50).setVisible(false);
+  pauseButton=this.add.text(S.w-48,10,"II",{font:"28px monospace",fill:"#fff"}).setInteractive().setDepth(15);
   pauseButton.on("pointerdown",()=>togglePause(this));
   this.input.keyboard.on("keydown-P",()=>togglePause(this));
 
   this.scale.on("resize",()=>{const S3=sizes(this); ship.setDisplaySize(S3.ship,S3.ship); ship.y=S3.h-S3.bottomPad; ship.x=Phaser.Math.Clamp(ship.x,16,S3.w-16); pauseText.setPosition(S3.w/2,S3.h/2); pauseButton.setPosition(S3.w-48,10); enemies.children.iterate(e=>{if(e?.active)e.setDisplaySize(S3.enemy,S3.enemy);}); bullets.children.iterate(b=>{if(b?.active)b.setDisplaySize(S3.bullet,S3.bullet);}); scoreText.setFontSize(Math.max(14,S3.w/40)).setPosition(8,8); livesText.setFontSize(Math.max(14,S3.w/40)).setPosition(8,28);});
 }
 
-// Volume UI
-const volumeSlider = document.getElementById("volume-slider");
-volumeSlider.addEventListener("input", e => {
-  const vol = parseFloat(e.target.value);
-  if(window.game && window.game.sound) window.game.sound.volume = vol;
-});
+// Volume e mute
+const volumeSlider=document.getElementById("volume-slider");
+volumeSlider.addEventListener("input",e=>{if(window.game) window.game.sound.volume=parseFloat(e.target.value);});
+const muteBtn=document.getElementById("mute-btn");
+let muted=false;
+muteBtn.addEventListener("click",()=>{muted=!muted;if(window.game) window.game.sound.mute=muted; muteBtn.textContent=muted?"🔇":"🔊";});
 
-const muteBtn = document.getElementById("mute-btn");
-let muted = false;
-muteBtn.addEventListener("click",()=>{
-  muted=!muted;
-  if(window.game && window.game.sound) window.game.sound.mute = muted;
-  muteBtn.textContent = muted?"🔇":"🔊";
-});
+// Cheat menu
+const bulletSpeedSlider=document.getElementById("bullet-speed-slider");
+bulletSpeedSlider.addEventListener("input",e=>{bulletSpeed=parseInt(e.target.value);});
+const gunCountInput=document.getElementById("gun-count");
+gunCountInput.addEventListener("input",e=>{gunCount=Math.min(5,Math.max(1,parseInt(e.target.value)));});
 
 function update(time){
-  if(gameOver||paused)return;
+  if(gameOver||paused) return;
   const S = sizes(this); ship.setVelocity(0);
+
   if(cursors.left?.isDown) ship.setVelocityX(-200); else if(cursors.right?.isDown) ship.setVelocityX(200);
   if(cursors.up?.isDown) ship.setVelocityY(-200); else if(cursors.down?.isDown) ship.setVelocityY(200);
-  if(this.input.activePointer.isDown){ ship.x=Phaser.Math.Clamp(this.input.activePointer.x,16,S.w-16); ship.y=Phaser.Math.Clamp(this.input.activePointer.y,16,S.h-S.bottomPad);}
-  const fireInput = cursors.space?.isDown || (this.input.activePointer.isDown&&!cursors.left?.isDown&&!cursors.right?.isDown);
-  if(fireInput&&time>lastShot+200){const b=bullets.get(ship.x,ship.y-20); if(b){b.enableBody(true,ship.x,ship.y-20,true,true).setDisplaySize(sizes(this).bullet,sizes(this).bullet).setVelocity(0,-300); lastShot=time; shootSound.play();}}
+  if(this.input.activePointer.isDown){ ship.x=Phaser.Math.Clamp(this.input.activePointer.x,16,S.w-16); ship.y=Phaser.Math.Clamp(this.input.activePointer.y,16,S.h-S.bottomPad); }
+
+  const fireInput=cursors.space?.isDown || (this.input.activePointer.isDown&&!cursors.left?.isDown&&!cursors.right?.isDown);
+  if(fireInput && time>lastShot+200){
+    const spread = 15; // ampiezza ventaglio
+    for(let i=0;i<gunCount;i++){
+      const offset=(i-(gunCount-1)/2)*spread;
+      const b=bullets.get(ship.x,ship.y-20);
+      if(b){
+        b.enableBody(true,ship.x,ship.y-20,true,true)
+          .setTexture("bullet")
+          .setDisplaySize(sizes(this).bullet,sizes(this).bullet)
+          .setVelocity(offset,-bulletSpeed);
+        lastShot=time;
+        shootSound.play();
+      }
+    }
+  }
+
   bullets.children.iterate(b=>{if(b?.active&&(b.y<-32||b.y>sizes(this).h+32)) b.disableBody(true,true);});
   enemies.children.iterate(e=>{if(e?.active&&e.y>ship.y+20){ e.disableBody(true,true); if(time>lastMissSound+300){missSound.play();lastMissSound=time;} lives--; livesText.setText("Lives:"+lives); if(lives<=0) triggerGameOver(this);}});
 }
 
 function spawnEnemy(scene){
-  const S=sizes(scene);
-  const x=Phaser.Math.Between(20,S.w-20);
-  const e=enemies.create(x,-20,"enemy");
-  e.setDisplaySize(S.enemy,S.enemy).setActive(true).setVisible(true);
+  const S=sizes(scene); const x=Phaser.Math.Between(20,S.w-20);
+  const e=enemies.create(x,-20,"enemy"); e.setDisplaySize(S.enemy,S.enemy).setActive(true).setVisible(true);
   const vy=Phaser.Math.Between(80,140)*enemySpeedFactor;
   if(e.body) e.body.setVelocity(0,vy); else e.setVelocity(0,vy);
 }
 
 function togglePause(scene){
-  if(gameOver)return;
+  if(gameOver) return;
   paused=!paused;
   pauseText.setVisible(paused);
   pauseButton.setText(paused?"▶":"II");
-  paused ? scene.physics.world.pause() : scene.physics.world.resume();
+  paused?scene.physics.world.pause():scene.physics.world.resume();
   document.getElementById("pause-ui").style.display = paused?"flex":"none";
 }
 
 function triggerGameOver(scene){
   gameOver=true; gameOverSound.play();
-  const centerX=scene.scale.width/2,centerY=scene.scale.height/2;
-  const overlay = scene.add.rectangle(centerX,centerY,scene.scale.width,scene.scale.height,0x000000,0.5).setDepth(20);
+  const cx=scene.scale.width/2,cy=scene.scale.height/2;
+  const overlay=scene.add.rectangle(cx,cy,scene.scale.width,scene.scale.height,0x000000,0.5).setDepth(20);
   gameOverElements.push(overlay);
-  const goText = scene.add.text(centerX,centerY-80,"GAME OVER",{font:"32px monospace",fill:"#ff4444"}).setOrigin(0.5).setDepth(21);
-  const scoreDisplay = scene.add.text(centerX,centerY-40,"Score:"+score,{font:"20px monospace",fill:"#fff"}).setOrigin(0.5).setDepth(21);
+  const goText=scene.add.text(cx,cy-120,"GAME OVER",{font:"32px monospace",fill:"#ff4444"}).setOrigin(0.5).setDepth(21);
+  const scoreDisplay=scene.add.text(cx,cy-80,"Score:"+score,{font:"20px monospace",fill:"#fff"}).setOrigin(0.5).setDepth(21);
   gameOverElements.push(goText,scoreDisplay);
 
-  // salva high scores
+  // Top 10
   const KEY="phaser_highscores";
   let list=JSON.parse(localStorage.getItem(KEY)||"[]");
   list.push({score,date:new Date().toISOString()});
@@ -150,27 +171,20 @@ function triggerGameOver(scene){
   list=list.slice(0,10);
   localStorage.setItem(KEY,JSON.stringify(list));
 
-  list.forEach((r,i)=>{
-    const y=centerY-10+i*24;
-    const txt=scene.add.text(centerX-100,y,`${i+1}. ${r.score} - ${new Date(r.date).toLocaleDateString()}`,{font:"16px monospace",fill:"#fff"}).setDepth(21);
-    gameOverElements.push(txt);
-  });
+  const hsText=list.map((r,i)=>`${i+1}. ${r.score}`).join("\n");
+  const highScores=scene.add.text(cx,cy-20,"Top 10:\n"+hsText,{font:"16px monospace",fill:"#ffff00",align:"center"}).setOrigin(0.5).setDepth(21);
+  gameOverElements.push(highScores);
 
-  // Bottone Restart
-  const restart = scene.add.text(centerX,centerY+200,"Restart",{font:"20px monospace",fill:"#00ff00",backgroundColor:"#003300",padding:{x:12,y:8}})
-    .setOrigin(0.5).setDepth(25).setInteractive({useHandCursor:true});
-  restart.on("pointerdown",()=>restartGame(scene));
-  gameOverElements.push(restart);
-}
-
-function restartGame(scene){
-  gameOverElements.forEach(g=>g.destroy());
-  gameOverElements=[];
-  score=0;lives=5;enemySpeedFactor=1.0;lastShot=0;lastMissSound=0;
-  gameOver=false;paused=false;
-  scoreText.setText("Score: 0"); livesText.setText("Lives: 5");
-  enemies.clear(true,true); bullets.clear(true,true);
-  scene.physics.world.resume();
+  // Restart button
+  const restartBtn=document.createElement("button");
+  restartBtn.textContent="Restart";
+  restartBtn.style.position="absolute";
+  restartBtn.style.left="50%";
+  restartBtn.style.top="80%";
+  restartBtn.style.transform="translate(-50%,0)";
+  restartBtn.style.zIndex=1000;
+  document.body.appendChild(restartBtn);
+  restartBtn.onclick=()=>location.reload();
 }
 </script>
 </body>
