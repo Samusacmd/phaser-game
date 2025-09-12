@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Space Game - Phaser + Telegram WebApp</title>
+  <title>Space Game - Phaser 3</title>
   <style>
     html,body { height:100%; margin:0; background:#000; color:#fff; font-family: monospace; }
     #game { width:100%; height:100vh; overflow:hidden; }
@@ -16,10 +16,6 @@
   <script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.min.js"></script>
 
   <script>
-const tg = window.Telegram?.WebApp;
-tg?.ready?.();
-tg?.expand?.();
-
 const config = {
   type: Phaser.AUTO,
   parent: "game",
@@ -30,7 +26,7 @@ const config = {
 
 new Phaser.Game(config);
 
-// stato globale
+// Stato globale
 let ship, cursors, bullets, enemies, lastShot = 0, score = 0, scoreText, lives = 5, livesText;
 let shootSound, hitSound, missSound, gameOverSound, lastMissSound = 0;
 let gameOver = false, paused = false;
@@ -77,18 +73,16 @@ function create(){
 
   enemies = this.physics.add.group();
 
-  shootSound = this.sound.add("shoot");
-  hitSound   = this.sound.add("hit");
-  missSound  = this.sound.add("miss");
-  gameOverSound = this.sound.add("gameover");
+  shootSound = this.sound.add("shoot", { volume: 0.5 });
+  hitSound   = this.sound.add("hit", { volume: 0.5 });
+  missSound  = this.sound.add("miss", { volume: 0.5 });
+  gameOverSound = this.sound.add("gameover", { volume: 0.5 });
 
-  // spawn nemici
   this.time.addEvent({
     delay: 700, loop: true,
     callback: () => { if(!gameOver && !paused) spawnEnemy(this); }
   });
 
-  // collisione proiettili
   this.physics.add.overlap(bullets, enemies, (b,e) => {
     if(!gameOver && !paused){
       b.disableBody(true,true);
@@ -100,21 +94,18 @@ function create(){
     }
   });
 
-  // HUD
   scoreText = this.add.text(8,8,"Score: 0",{ font:"16px monospace", fill:"#fff" }).setDepth(10).setScrollFactor(0);
   livesText = this.add.text(8,28,"Lives: "+lives,{ font:"16px monospace", fill:"#fff" }).setDepth(10).setScrollFactor(0);
 
-  pauseText = this.add.text(S.w/2, S.h/2, "PAUSE", { font:"32px monospace", fill:"#ffff00" }).setOrigin(0.5).setDepth(50).setVisible(false);
+  pauseText = this.add.text(S.w/2, S.h/2, "PAUSE", { font:"32px monospace", fill:"#ffff00" })
+    .setOrigin(0.5).setDepth(50).setVisible(false);
 
-  // Bottone pausa touch
   pauseButton = this.add.text(S.w-48, 10, "II", { font:"28px monospace", fill:"#fff" })
     .setInteractive().setScrollFactor(0).setDepth(15);
   pauseButton.on("pointerdown", () => togglePause(this));
 
-  // tasto P
   this.input.keyboard.on("keydown-P", () => togglePause(this));
 
-  // resize
   this.scale.on("resize", () => {
     const S3 = sizes(this);
     ship.setDisplaySize(S3.ship, S3.ship);
@@ -127,8 +118,6 @@ function create(){
     scoreText.setFontSize(Math.max(14,S3.w/40)).setPosition(8,8);
     livesText.setFontSize(Math.max(14,S3.w/40)).setPosition(8,28);
   });
-
-  tg?.onEvent?.("viewportChanged", () => this.scale.refresh());
 }
 
 function update(time){
@@ -146,7 +135,6 @@ function update(time){
     ship.y = Phaser.Math.Clamp(this.input.activePointer.y,16,S.h-S.bottomPad);
   }
 
-  // sparo
   const fireInput = cursors.space?.isDown || (this.input.activePointer.isDown && !cursors.left?.isDown && !cursors.right?.isDown);
   if(fireInput && time>lastShot+200){
     const b = bullets.get(ship.x, ship.y-20);
@@ -159,14 +147,12 @@ function update(time){
     }
   }
 
-  bullets.children.iterate(b => {
-    if(b?.active && (b.y<-32 || b.y>sizes(this).h+32)) b.disableBody(true,true);
-  });
+  bullets.children.iterate(b => { if(b?.active && (b.y<-32 || b.y>sizes(this).h+32)) b.disableBody(true,true); });
 
   enemies.children.iterate(e => {
     if(e?.active && e.y>ship.y+20){
       e.disableBody(true,true);
-      if(time>lastMissSound+300){ missSound.play({volume:0.8}); lastMissSound=time; }
+      if(time>lastMissSound+300){ missSound.play(); lastMissSound=time; }
       lives--;
       livesText.setText("Lives: "+lives);
       if(lives<=0) triggerGameOver(this);
@@ -195,7 +181,6 @@ function triggerGameOver(scene){
   gameOver = true;
   gameOverSound.play();
 
-  // overlay
   const centerX = scene.scale.width/2, centerY = scene.scale.height/2;
   const overlay = scene.add.rectangle(centerX,centerY,scene.scale.width,scene.scale.height,0x000000,0.5).setDepth(20);
   gameOverElements.push(overlay);
@@ -215,12 +200,12 @@ function triggerGameOver(scene){
   // mostra top 10
   list.forEach((r,i)=>{
     const y=centerY-10+i*24;
-    const txt=scene.add.text(centerX-100,y,`${i+1}. ${r.score}    ${new Date(r.date).toLocaleDateString()}`,{font:"16px monospace",fill:"#fff"}).setDepth(21);
+    const txt=scene.add.text(centerX-100,y,`${i+1}. ${r.score} - ${new Date(r.date).toLocaleDateString()}`,{font:"16px monospace",fill:"#fff"}).setDepth(21);
     gameOverElements.push(txt);
   });
 
-  // Restart button
-  const restart=scene.add.text(centerX,centerY+200,"Restart",{font:"20px monospace",fill:"#00ff00",backgroundColor:"#003300",padding:{x:12,y:8}})
+  // Bottone Restart
+  const restart = scene.add.text(centerX,centerY+200,"Restart",{font:"20px monospace",fill:"#00ff00",backgroundColor:"#003300",padding:{x:12,y:8}})
     .setOrigin(0.5).setDepth(25).setInteractive({useHandCursor:true});
   restart.on("pointerdown",()=>restartGame(scene));
   gameOverElements.push(restart);
@@ -229,13 +214,10 @@ function triggerGameOver(scene){
 function restartGame(scene){
   gameOverElements.forEach(g=>g.destroy());
   gameOverElements=[];
-  // reset stato
   score=0;lives=5;enemySpeedFactor=1.0;lastShot=0;lastMissSound=0;
-  gameOver=false;
-  paused=false;
+  gameOver=false;paused=false;
   scoreText.setText("Score: 0");
   livesText.setText("Lives: 5");
-  // distruggi nemici e proiettili
   enemies.clear(true,true);
   bullets.clear(true,true);
   scene.physics.world.resume();
