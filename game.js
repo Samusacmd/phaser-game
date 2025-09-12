@@ -14,8 +14,8 @@ new Phaser.Game(config);
 
 // stato
 let ship, cursors, bullets, enemies, lastShot = 0, score = 0, scoreText;
-let shootSound, hitSound, missSound;
-let ENEMY_SIZE_FACTOR = 3.0; // Modifica qui la grandezza dei nemici
+let shootSound, hitSound, missSound, lastMissSound = 0;
+const ENEMY_SIZE_FACTOR = 3.0; // grandezza nemici
 
 function sizes(scene){
   const w = scene.scale.width, h = scene.scale.height;
@@ -38,10 +38,13 @@ function create(){
   ship = this.physics.add.image(S.w/2, S.h - S.bottomPad, "ship")
     .setCollideWorldBounds(true)
     .setDisplaySize(S.ship, S.ship);
-  ship.refreshBody();
 
   cursors = this.input.keyboard.createCursorKeys();
-  bullets = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize: 80 });
+  bullets = this.physics.add.group({
+    classType: Phaser.Physics.Arcade.Image,
+    maxSize: 80,
+    createCallback: b => b.setDisplaySize(S.bullet, S.bullet).setTexture("bullet")
+  });
   enemies = this.physics.add.group();
 
   shootSound = this.sound.add("shoot");
@@ -54,7 +57,6 @@ function create(){
       const x = Phaser.Math.Between(20, S2.w - 20);
       const e = enemies.create(x, -20, "enemy").setDisplaySize(S2.enemy, S2.enemy);
       e.setVelocity(0, Phaser.Math.Between(80, 140));
-      e.refreshBody();
     }
   });
 
@@ -66,21 +68,24 @@ function create(){
     hitSound.play();
   });
 
-  scoreText = this.add.text(8,8,"0",{ font:"16px monospace", fill:"#fff" }).setDepth(10);
+  scoreText = this.add.text(8,8,"0",{
+    font:"16px monospace",
+    fill:"#fff",
+    align:"left"
+  }).setDepth(10).setScrollFactor(0);
 
   this.scale.on("resize", () => {
     const S3 = sizes(this);
     ship.setDisplaySize(S3.ship, S3.ship);
-    ship.refreshBody();
     ship.y = S3.h - S3.bottomPad;
     ship.x = Phaser.Math.Clamp(ship.x, 16, S3.w - 16);
     enemies.children.iterate(e => {
-      if(e?.active){ e.setDisplaySize(S3.enemy, S3.enemy); e.refreshBody(); }
+      if(e?.active){ e.setDisplaySize(S3.enemy, S3.enemy); }
     });
     bullets.children.iterate(b => {
-      if(b?.active){ b.setDisplaySize(S3.bullet, S3.bullet); b.refreshBody(); }
+      if(b?.active){ b.setDisplaySize(S3.bullet, S3.bullet); }
     });
-    scoreText.setPosition(8,8);
+    scoreText.setFontSize(Math.max(14, S3.w/40)).setPosition(8,8);
   });
 
   tg?.onEvent?.("viewportChanged", () => this.scale.refresh());
@@ -90,36 +95,40 @@ function update(time){
   const S = sizes(this);
   ship.setVelocity(0);
 
+  // Movimento con tastiera
   if (cursors.left?.isDown) ship.setVelocityX(-200);
   else if (cursors.right?.isDown) ship.setVelocityX(200);
 
   if (cursors.up?.isDown) ship.setVelocityY(-200);
   else if (cursors.down?.isDown) ship.setVelocityY(200);
 
+  // Movimento con touch/mouse
   if (this.input.activePointer.isDown) {
     ship.x = Phaser.Math.Clamp(this.input.activePointer.x, 16, S.w - 16);
     ship.y = Phaser.Math.Clamp(this.input.activePointer.y, 16, S.h - S.bottomPad);
   }
 
-  // Sparo con suono
-  if ((cursors.space?.isDown || this.input.activePointer.isDown) && time > lastShot + 200){
-    const b = bullets.get();
+  // Sparo (spazio = tastiera, click = solo se click non usato per muovere)
+  const fireInput = cursors.space?.isDown || (this.input.activePointer.isDown && !cursors.left?.isDown && !cursors.right?.isDown);
+  if (fireInput && time > lastShot + 200){
+    const b = bullets.get(ship.x, ship.y - 20);
     if (b){
       b.enableBody(true, ship.x, ship.y - 20, true, true)
-        .setTexture("bullet")
-        .setDisplaySize(S.bullet, S.bullet);
-      b.refreshBody();
-      b.setVelocity(0, -300);
+        .setDisplaySize(S.bullet, S.bullet)
+        .setVelocity(0, -300);
       lastShot = time;
       shootSound.play();
     }
   }
 
-  // Pulizia proiettili con suono per mancato bersaglio
+  // Pulizia proiettili + suono "miss" limitato
   bullets.children.iterate(b => {
     if(b?.active && (b.y < -32 || b.y > S.h + 32)){
       b.disableBody(true,true);
-      missSound.play();
+      if(time > lastMissSound + 150){ // evita spam
+        missSound.play({ volume: 0.6 });
+        lastMissSound = time;
+      }
     }
   });
 }
