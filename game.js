@@ -12,7 +12,7 @@ new Phaser.Game(config);
 // stato
 let ship, cursors, bullets, enemies, lastShot = 0, score = 0, scoreText;
 let shootSound, hitSound, missSound;
-let ENEMY_SIZE_FACTOR = 2.5; // Modifica qui la grandezza dei nemici
+let ENEMY_SIZE_FACTOR = 3.0; // Modifica qui la grandezza dei nemici
 function sizes(scene){
   const w = scene.scale.width, h = scene.scale.height;
   return { w, h, ship: w/8, enemy: w/10 * ENEMY_SIZE_FACTOR, bullet: w/30, bottomPad: Math.max(48, h*0.08) };
@@ -80,3 +80,4 @@ function update(time){
   else if (cursors.down?.isDown) ship.setVelocityY(200);
   if (this.input.activePointer.isDown) {
     ship.x = Phaser
+
