@@ -16,7 +16,7 @@ new Phaser.Game(config);
 let ship, cursors, bullets, enemies, lastShot = 0, score = 0, scoreText;
 
 // Configura la grandezza dei nemici qui
-let ENEMY_SIZE_FACTOR = 2.0; // Metti 1.0 per normale, 2.0 per doppio, ecc
+let ENEMY_SIZE_FACTOR = 4.0; // Metti 1.0 per normale, 2.0 per doppio, ecc
 
 // utility dimensioni
 function sizes(scene){
