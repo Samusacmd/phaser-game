@@ -12,9 +12,9 @@ const config = {
 
 new Phaser.Game(config);
 
-// stato
-let ship, cursors, bullets, enemies, lastShot = 0, score = 0, scoreText;
-let shootSound, hitSound, missSound, lastMissSound = 0;
+// stato\ nlet ship, cursors, bullets, enemies, lastShot = 0, score = 0, scoreText, lives = 5, livesText;
+let shootSound, hitSound, missSound, gameOverSound, lastMissSound = 0;
+let gameOver = false;
 const ENEMY_SIZE_FACTOR = 3.0; // grandezza nemici
 
 function sizes(scene){
@@ -29,6 +29,7 @@ function preload(){
   this.load.audio("shoot", ["assets/shoot.mp3"]);
   this.load.audio("hit",   ["assets/hit.mp3"]);
   this.load.audio("miss",  ["assets/miss.mp3"]);
+  this.load.audio("gameover", ["assets/gameover.mp3"]);
 }
 
 function create(){
@@ -50,25 +51,36 @@ function create(){
   shootSound = this.sound.add("shoot");
   hitSound   = this.sound.add("hit");
   missSound  = this.sound.add("miss");
+  gameOverSound = this.sound.add("gameover");
 
   this.time.addEvent({
     delay: 700, loop: true, callback: () => {
-      const S2 = sizes(this);
-      const x = Phaser.Math.Between(20, S2.w - 20);
-      const e = enemies.create(x, -20, "enemy").setDisplaySize(S2.enemy, S2.enemy);
-      e.setVelocity(0, Phaser.Math.Between(80, 140));
+      if (!gameOver) {
+        const S2 = sizes(this);
+        const x = Phaser.Math.Between(20, S2.w - 20);
+        const e = enemies.create(x, -20, "enemy").setDisplaySize(S2.enemy, S2.enemy);
+        e.setVelocity(0, Phaser.Math.Between(80, 140));
+      }
     }
   });
 
   this.physics.add.overlap(bullets, enemies, (b,e) => {
-    b.disableBody(true,true);
-    e.disableBody(true,true);
-    score++;
-    scoreText.setText(String(score));
-    hitSound.play();
+    if (!gameOver) {
+      b.disableBody(true,true);
+      e.disableBody(true,true);
+      score++;
+      scoreText.setText("Score: " + score);
+      hitSound.play();
+    }
   });
 
-  scoreText = this.add.text(8,8,"0",{
+  scoreText = this.add.text(8,8,"Score: 0",{
+    font:"16px monospace",
+    fill:"#fff",
+    align:"left"
+  }).setDepth(10).setScrollFactor(0);
+
+  livesText = this.add.text(8,28,"Lives: " + lives,{
     font:"16px monospace",
     fill:"#fff",
     align:"left"
@@ -86,12 +98,15 @@ function create(){
       if(b?.active){ b.setDisplaySize(S3.bullet, S3.bullet); }
     });
     scoreText.setFontSize(Math.max(14, S3.w/40)).setPosition(8,8);
+    livesText.setFontSize(Math.max(14, S3.w/40)).setPosition(8,28);
   });
 
   tg?.onEvent?.("viewportChanged", () => this.scale.refresh());
 }
 
 function update(time){
+  if (gameOver) return;
+
   const S = sizes(this);
   ship.setVelocity(0);
 
@@ -121,14 +136,14 @@ function update(time){
     }
   }
 
-  // Pulizia proiettili (senza suono miss)
+  // Pulizia proiettili
   bullets.children.iterate(b => {
     if(b?.active && (b.y < -32 || b.y > S.h + 32)){
       b.disableBody(true,true);
     }
   });
 
-  // Controllo nemici che oltrepassano la nave → suono miss
+  // Controllo nemici che oltrepassano la nave → vita -1 e suono miss
   enemies.children.iterate(e => {
     if(e?.active && e.y > ship.y + 20){
       e.disableBody(true,true);
@@ -136,6 +151,21 @@ function update(time){
         missSound.play({ volume: 0.8 });
         lastMissSound = time;
       }
+      lives--;
+      livesText.setText("Lives: " + lives);
+      if(lives <= 0){
+        triggerGameOver(this);
+      }
     }
   });
+}
+
+function triggerGameOver(scene){
+  gameOver = true;
+  gameOverSound.play();
+  scene.add.text(scene.scale.width/2, scene.scale.height/2, "GAME OVER\nScore: " + score, {
+    font: "24px monospace",
+    fill: "#ff0000",
+    align: "center"
+  }).setOrigin(0.5).setDepth(20);
 }
