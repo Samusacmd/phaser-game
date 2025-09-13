@@ -113,7 +113,7 @@ function create(){
   pauseButton.on("pointerdown",()=>togglePause(this));
   this.input.keyboard.on("keydown-P",()=>togglePause(this));
 
-  this.scale.on("resize",()=>{const S3=sizes(this); ship.setDisplaySize(S3.ship,S3.ship); ship.y=S3.h-S3.bottomPad; ship.x=Phaser.Math.Clamp(ship.x,30,S3.w-30); pauseText.setPosition(S3.w/2,S3.h/2); pauseButton.setPosition(S3.w-48,10); enemies.children.iterate(e=>{if(e?.active)e.setDisplaySize(S3.enemy,S3.enemy);}); bullets.children.iterate(b=>{if(b?.active)b.setDisplaySize(S3.bullet,sizes(this).bullet);}); scoreText.setFontSize(Math.max(14,S3.w/40)).setPosition(8,8); livesText.setFontSize(Math.max(14,S3.w/40)).setPosition(8,28);});
+  this.scale.on("resize",()=>{const S3=sizes(this); ship.setDisplaySize(S3.ship,S3.ship); ship.y=S3.h-S3.bottomPad; ship.x=Phaser.Math.Clamp(ship.x,8,S3.w-8); pauseText.setPosition(S3.w/2,S3.h/2); pauseButton.setPosition(S3.w-48,10); enemies.children.iterate(e=>{if(e?.active)e.setDisplaySize(S3.enemy,S3.enemy);}); bullets.children.iterate(b=>{if(b?.active)b.setDisplaySize(S3.bullet,sizes(this).bullet);}); scoreText.setFontSize(Math.max(14,S3.w/40)).setPosition(8,8); livesText.setFontSize(Math.max(14,S3.w/40)).setPosition(8,28);});
 }
 
 // Volume e mute
