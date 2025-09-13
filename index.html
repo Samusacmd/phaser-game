@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Space Game - Fabio)</title>
+<title>Space Game - Fabio</title>
 <style>
 html,body { height:100%; margin:0; background:#000; color:#fff; font-family: monospace; }
 #game { width:100%; height:100vh; overflow:hidden; position:relative; }
@@ -19,20 +19,12 @@ input[type=range], input[type=number] { width:150px; }
   <button id="mute-btn">🔊</button>
   <label>Volume <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.5"></label>
   <label>Velocità proiettili <input type="range" id="bullet-speed-slider" min="100" max="800" value="300"></label>
-  <label>Postazioni fuoco <input type="number" id="gun-count" min="1" max="10" value="1"></label>
-  <label><input type="checkbox" id="second-cannon"> Cannone triplo</label>
+  <label>Postazioni fuoco <input type="number" id="gun-count" min="1" max="5" value="1"></label>
+  <label>Dimensione esplosione <input type="range" id="explosion-scale-slider" min="0.5" max="3" step="0.1" value="1"></label>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.min.js"></script>
 <script>
-/*
-  Versione unificata e corretta:
-  - Mantiene cheat / personalizzazioni
-  - Risolve i problemi di rotazione/ridimensionamento su smartphone
-  - Guns paralleli (distanza definita da cannonOffsetFactor)
-  - Uscita dal menu pausa con tap sullo schermo (resume ritardato)
-*/
-
 const config = {
   type: Phaser.AUTO,
   parent: "game",
@@ -54,17 +46,10 @@ const DIFFICULTY_STEP=100;
 const SPEED_MULTIPLIER=1.2;
 let enemySpeedFactor=1.0;
 
-// Parametro per distanza cannoni (in proporzione alla larghezza della nave)
-// Modifica questo valore nello script per cambiare la distanza orizzontale tra i cannoni
-let cannonOffsetFactor = 0.1; // 0.4 = 40% della larghezza nave
-
 // Cheat config
 let bulletSpeed=300;
 let gunCount=1;
 let explosionScale=4.0;
-
-// Questo valore blocca temporaneamente lo sparo dopo il resume per evitare tocchi accidentali
-let unpauseBlockUntil = 0;
 
 function sizes(scene){
   const w=scene.scale.width||window.innerWidth;
@@ -91,7 +76,7 @@ function create(){
 
   cursors = this.input.keyboard.createCursorKeys();
 
-  bullets = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize:120 });
+  bullets = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize:80 });
   enemies = this.physics.add.group();
 
   shootSound = this.sound.add("shoot",{volume:0.5});
@@ -118,101 +103,44 @@ function create(){
     e.disableBody(true,true);
     score++; scoreText.setText("Score:"+score); hitSound.play();
     if(score % DIFFICULTY_STEP === 0) enemySpeedFactor *= SPEED_MULTIPLIER;
-  } });
+  }});
 
   scoreText=this.add.text(8,8,"Score:0",{font:"16px monospace",fill:"#fff"}).setDepth(10).setScrollFactor(0);
   livesText=this.add.text(8,28,"Lives:"+lives,{font:"16px monospace",fill:"#fff"}).setDepth(10).setScrollFactor(0);
 
   pauseText=this.add.text(S.w/2,S.h/2,"PAUSE",{font:"32px monospace",fill:"#ffff00"}).setOrigin(0.5).setDepth(50).setVisible(false);
   pauseButton=this.add.text(S.w-48,10,"II",{font:"28px monospace",fill:"#fff"}).setInteractive().setDepth(15);
-  pauseButton.on("pointerdown",()=>{
-    // resume/pause via bottone: comportamento immediato (oppure potresti cambiare e usare delay)
-    togglePause(this);
-    // se hai ripreso via bottone, applica breve blocco allo sparo per evitare tocchi residui
-    if(!paused) unpauseBlockUntil = Date.now() + 300;
-  });
+  pauseButton.on("pointerdown",()=>togglePause(this));
   this.input.keyboard.on("keydown-P",()=>togglePause(this));
 
-  // Clic sullo schermo per uscire dalla pausa con un piccolo delay
-  this.input.on("pointerdown",()=>{
-    if(paused && !gameOver){
-      // ritarda il resume e applica blocco sparo
-      setTimeout(()=>{ togglePause(this); unpauseBlockUntil = Date.now() + 300; }, 300);
-    }
-  });
-
-  // Gestione ridimensionamento (manteniamo la logica principale di Phaser ma forziamo canvas sizing per devicePixelRatio)
-  this.scale.on("resize",()=>{
-    const S3=sizes(this);
-    ship.setDisplaySize(S3.ship,S3.ship);
-    ship.y=S3.h-S3.bottomPad;
-    ship.x=Phaser.Math.Clamp(ship.x,16,S3.w-16);
-
-    pauseText.setPosition(S3.w/2,S3.h/2);
-    pauseButton.setPosition(S3.w-48,10);
-
-    enemies.children.iterate(e=>{ if(e?.active) e.setDisplaySize(S3.enemy,S3.enemy); });
-    bullets.children.iterate(b=>{ if(b?.active) b.setDisplaySize(S3.bullet,S3.bullet); });
-
-    scoreText.setFontSize(Math.max(14,S3.w/40)).setPosition(8,8);
-    livesText.setFontSize(Math.max(14,S3.w/40)).setPosition(8,28);
-
-    // Correzione nitidezza retina / devicePixelRatio
-    try{
-      const ratio = window.devicePixelRatio || 1;
-      const canvas = this.game.canvas;
-      if(canvas){
-        canvas.style.width = S3.w + "px";
-        canvas.style.height = S3.h + "px";
-        canvas.width = Math.floor(S3.w * ratio);
-        canvas.height = Math.floor(S3.h * ratio);
-        const ctx = canvas.getContext && canvas.getContext('2d');
-        if(ctx && ctx.setTransform){
-          ctx.setTransform(1,0,0,1,0,0);
-          ctx.scale(ratio,ratio);
-        }
-      }
-    }catch(e){ /* ignore if renderer is WebGL or other */ }
-  });
+  this.scale.on("resize",()=>{const S3=sizes(this); ship.setDisplaySize(S3.ship,S3.ship); ship.y=S3.h-S3.bottomPad; ship.x=Phaser.Math.Clamp(ship.x,16,S3.w-16); pauseText.setPosition(S3.w/2,S3.h/2); pauseButton.setPosition(S3.w-48,10); enemies.children.iterate(e=>{if(e?.active)e.setDisplaySize(S3.enemy,S3.enemy);}); bullets.children.iterate(b=>{if(b?.active)b.setDisplaySize(S3.bullet,sizes(this).bullet);}); scoreText.setFontSize(Math.max(14,S3.w/40)).setPosition(8,8); livesText.setFontSize(Math.max(14,S3.w/40)).setPosition(8,28);});
 }
 
 // Volume e mute
 const volumeSlider=document.getElementById("volume-slider");
-volumeSlider.addEventListener("input",e=>{ if(window.game) window.game.sound.volume=parseFloat(e.target.value); });
+volumeSlider.addEventListener("input",e=>{if(window.game) window.game.sound.volume=parseFloat(e.target.value);});
 const muteBtn=document.getElementById("mute-btn");
 let muted=false;
-muteBtn.addEventListener("click",()=>{ muted=!muted; if(window.game) window.game.sound.mute=muted; muteBtn.textContent=muted?"🔇":"🔊"; });
+muteBtn.addEventListener("click",()=>{muted=!muted;if(window.game) window.game.sound.mute=muted; muteBtn.textContent=muted?"🔇":"🔊";});
 
 // Cheat menu
 const bulletSpeedSlider=document.getElementById("bullet-speed-slider");
-bulletSpeedSlider.addEventListener("input",e=>{ bulletSpeed=parseInt(e.target.value); });
+bulletSpeedSlider.addEventListener("input",e=>{bulletSpeed=parseInt(e.target.value);});
 const gunCountInput=document.getElementById("gun-count");
-gunCountInput.addEventListener("input",e=>{ gunCount=Math.min(10,Math.max(1,parseInt(e.target.value))); });
-
-// Second cannon toggle
-const secondCannon=document.getElementById("second-cannon");
-let enableSecondCannon=false;
-secondCannon.addEventListener("change",e=>{ enableSecondCannon=e.target.checked; });
+gunCountInput.addEventListener("input",e=>{gunCount=Math.min(10,Math.max(1,parseInt(e.target.value)));});
+const explosionScaleSlider=document.getElementById("explosion-scale-slider");
+explosionScaleSlider.addEventListener("input",e=>{explosionScale=parseFloat(e.target.value);});
 
 function update(time){
   if(gameOver||paused) return;
-  const S = sizes(this);
-  ship.setVelocity(0);
+  const S = sizes(this); ship.setVelocity(0);
 
-  // movement via cursors
   if(cursors.left?.isDown) ship.setVelocityX(-200); else if(cursors.right?.isDown) ship.setVelocityX(200);
   if(cursors.up?.isDown) ship.setVelocityY(-200); else if(cursors.down?.isDown) ship.setVelocityY(200);
+  if(this.input.activePointer.isDown){ ship.x=Phaser.Math.Clamp(this.input.activePointer.x,16,S.w-16); ship.y=Phaser.Math.Clamp(this.input.activePointer.y,16,S.h-S.bottomPad); }
 
-  // pointer control (touch/mouse)
-  if(this.input.activePointer.isDown){
-    ship.x = Phaser.Math.Clamp(this.input.activePointer.x, 16, S.w-16);
-    ship.y = Phaser.Math.Clamp(this.input.activePointer.y, 16, S.h-S.bottomPad);
-  }
-
-  // controllo per evitare sparo immediato dopo resume
-  const nowMs = Date.now();
-  const fireInput = (cursors.space?.isDown) || (this.input.activePointer.isDown && !cursors.left?.isDown && !cursors.right?.isDown);
-  if(fireInput && time>lastShot+200 && nowMs > unpauseBlockUntil){
+  const fireInput=cursors.space?.isDown || (this.input.activePointer.isDown&&!cursors.left?.isDown&&!cursors.right?.isDown);
+  if(fireInput && time>lastShot+200){
     const spread = 15;
     for(let i=0;i<gunCount;i++){
       const offset=(i-(gunCount-1)/2)*spread;
@@ -224,58 +152,33 @@ function update(time){
           .setVelocity(offset,-bulletSpeed);
         lastShot=time;
         shootSound.play();
-        // se second cannon abilitato, spariamo due proiettili paralleli alla nave (destra/sinistra)
-        if(enableSecondCannon){
-          const offsetX = ship.displayWidth * cannonOffsetFactor;
-          const bR = bullets.get(ship.x + offsetX, ship.y-20);
-          if(bR){
-            bR.enableBody(true, ship.x + offsetX, ship.y-20, true, true)
-              .setTexture("bullet")
-              .setDisplaySize(sizes(this).bullet, sizes(this).bullet)
-              .setVelocity(offset, -bulletSpeed);
-          }
-          const bL = bullets.get(ship.x - offsetX, ship.y-20);
-          if(bL){
-            bL.enableBody(true, ship.x - offsetX, ship.y-20, true, true)
-              .setTexture("bullet")
-              .setDisplaySize(sizes(this).bullet, sizes(this).bullet)
-              .setVelocity(offset, -bulletSpeed);
-          }
-        }
       }
     }
   }
 
-  bullets.children.iterate(b=>{ if(b?.active && (b.y<-32 || b.y>sizes(this).h+32)) b.disableBody(true,true); });
-  enemies.children.iterate(e=>{ if(e?.active && e.y>ship.y+20){ e.disableBody(true,true); if(time>lastMissSound+300){ missSound.play(); lastMissSound=time; } lives--; livesText.setText("Lives:"+lives); if(lives<=0) triggerGameOver(this); } });
+  bullets.children.iterate(b=>{if(b?.active&&(b.y<-32||b.y>sizes(this).h+32)) b.disableBody(true,true);});
+  enemies.children.iterate(e=>{if(e?.active&&e.y>ship.y+20){ e.disableBody(true,true); if(time>lastMissSound+300){missSound.play();lastMissSound=time;} lives--; livesText.setText("Lives:"+lives); if(lives<=0) triggerGameOver(this);}});
 }
 
 function spawnEnemy(scene){
-  const S=sizes(scene);
-  const x=Phaser.Math.Between(20,S.w-20);
-  const e=enemies.create(x,-20,"enemy");
-  e.setDisplaySize(S.enemy,S.enemy).setActive(true).setVisible(true);
+  const S=sizes(scene); const x=Phaser.Math.Between(20,S.w-20);
+  const e=enemies.create(x,-20,"enemy"); e.setDisplaySize(S.enemy,S.enemy).setActive(true).setVisible(true);
   const vy=Phaser.Math.Between(80,140)*enemySpeedFactor;
   if(e.body) e.body.setVelocity(0,vy); else e.setVelocity(0,vy);
 }
 
 function togglePause(scene){
   if(gameOver) return;
-  paused = !paused;
+  paused=!paused;
   pauseText.setVisible(paused);
-  pauseButton.setText(paused ? "▶" : "II");
-  if(paused){
-    scene.physics.world.pause();
-    document.getElementById("pause-ui").style.display = "flex";
-  } else {
-    scene.physics.world.resume();
-    document.getElementById("pause-ui").style.display = "none";
-  }
+  pauseButton.setText(paused?"▶":"II");
+  paused?scene.physics.world.pause():scene.physics.world.resume();
+  document.getElementById("pause-ui").style.display = paused?"flex":"none";
 }
 
 function triggerGameOver(scene){
   gameOver=true; gameOverSound.play();
-  const cx=scene.scale.width/2, cy=scene.scale.height/2;
+  const cx=scene.scale.width/2,cy=scene.scale.height/2;
   const overlay=scene.add.rectangle(cx,cy,scene.scale.width,scene.scale.height,0x000000,0.5).setDepth(20);
   gameOverElements.push(overlay);
   const goText=scene.add.text(cx,cy-120,"GAME OVER",{font:"32px monospace",fill:"#ff4444"}).setOrigin(0.5).setDepth(21);
@@ -293,7 +196,7 @@ function triggerGameOver(scene){
   const highScores=scene.add.text(cx,cy-20,"Top 10:\n"+hsText,{font:"16px monospace",fill:"#ffff00",align:"center"}).setOrigin(0.5).setDepth(21);
   gameOverElements.push(highScores);
 
-  // Restart button (HTML)
+  // Restart button
   const restartBtn=document.createElement("button");
   restartBtn.textContent="Restart";
   restartBtn.style.position="absolute";
