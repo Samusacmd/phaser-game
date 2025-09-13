@@ -1,212 +1,249 @@
 <!DOCTYPE html>
-<html lang="it">
+<html>
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Space Game - Phaser 3</title>
-<style>
-html,body { height:100%; margin:0; background:#000; color:#fff; font-family: monospace; }
-#game { width:100%; height:100vh; overflow:hidden; position:relative; }
-.pause-ui { position:absolute; top:50px; right:50px; display:flex; flex-direction:column; gap:8px; color:#fff; font-family: monospace; }
-button,input { font-family: monospace; padding:4px 8px; background:#333; color:#fff; border:none; cursor:pointer; }
-input[type=range], input[type=number] { width:150px; }
-.highscores { font-size:14px; margin-top:10px; text-align:left; }
-</style>
+  <meta charset="utf-8">
+  <title>Phaser Resize Stable</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    html,body { margin:0; height:100%; }
+    #game { position:fixed; inset:0; }
+  </style>
+  <!-- Nessuna libreria esterna necessaria: il gioco è implementato con
+       JavaScript puro usando l'elemento canvas. -->
 </head>
 <body>
 <div id="game"></div>
-<div class="pause-ui" id="pause-ui" style="display:none;">
-  <button id="mute-btn">🔊</button>
-  <label>Volume <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.5"></label>
-  <label>Velocità proiettili <input type="range" id="bullet-speed-slider" min="100" max="800" value="300"></label>
-  <label>Postazioni fuoco <input type="number" id="gun-count" min="1" max="5" value="1"></label>
-  <label>Dimensione esplosione <input type="range" id="explosion-scale-slider" min="0.5" max="3" step="0.1" value="1"></label>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/phaser@3/dist/phaser.min.js"></script>
 <script>
-const config = {
-  type: Phaser.AUTO,
-  parent: "game",
-  physics: { default: "arcade" },
-  scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH },
-  scene: { preload, create, update }
-};
 
-const gameInstance = new Phaser.Game(config);
-window.game = gameInstance;
+// canvas e contesto di rendering
+const container = document.getElementById('game');
+const canvas = document.createElement('canvas');
+canvas.style.display = 'block';
+canvas.style.width = '100%';
+canvas.style.height = '100%';
+canvas.style.background = '#000';
+container.appendChild(canvas);
+const ctx = canvas.getContext('2d');
 
-let ship, cursors, bullets, enemies, lastShot=0, score=0, scoreText, lives=5, livesText;
-let shootSound, hitSound, missSound, gameOverSound, lastMissSound=0;
-let gameOver=false, paused=false;
-let pauseText, pauseButton;
-let gameOverElements=[];
-const ENEMY_SIZE_FACTOR=3.0;
-const DIFFICULTY_STEP=100;
-const SPEED_MULTIPLIER=1.2;
-let enemySpeedFactor=1.0;
+// stato di gioco
+let ship = { x: 0, y: 0, size: 0 };
+let bullets = [];
+let enemies = [];
+let lastShot = 0;
+let score = 0;
+let keys = {};
+let pointerActive = false;
+let pointerX = 0;
+let lastTime = performance.now();
+let dims = { w: 0, h: 0, base: 0, ship: 0, enemy: 0, bulletW: 0, bulletH: 0, bottomPad: 0 };
 
-// Cheat config
-let bulletSpeed=300;
-let gunCount=1;
-let explosionScale=1.0;
-
-function sizes(scene){
-  const w=scene.scale.width||window.innerWidth;
-  const h=scene.scale.height||window.innerHeight;
-  return { w,h, ship:w/8, enemy:(w/10)*ENEMY_SIZE_FACTOR, bullet:w/30, bottomPad:Math.max(48,h*0.08) };
+// Calcola le dimensioni in base alla finestra corrente
+function computeDims() {
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+  const base = Math.min(w, h);
+  return {
+    w,
+    h,
+    base,
+    ship: base * 0.15,
+    enemy: base * 0.10,
+    bulletW: base * 0.02,
+    bulletH: base * 0.04,
+    bottomPad: Math.max(48, h * 0.08)
+  };
 }
 
-function preload(){
-  this.load.image("ship","assets/ship.png");
-  this.load.image("bullet","assets/bullet.png");
-  this.load.image("enemy","assets/enemy.png");
-  this.load.spritesheet("explosion","assets/explosion.png",{frameWidth:32,frameHeight:32});
-  this.load.audio("shoot", ["assets/shoot.mp3"]);
-  this.load.audio("hit", ["assets/hit.mp3"]);
-  this.load.audio("miss", ["assets/miss.mp3"]);
-  this.load.audio("gameover", ["assets/gameover.mp3"]);
-}
-
-function create(){
-  const S = sizes(this);
-  this.physics.world.setBounds(0,0,S.w,S.h);
-
-  ship = this.physics.add.image(S.w/2,S.h-S.bottomPad,"ship").setCollideWorldBounds(true).setDisplaySize(S.ship,S.ship);
-
-  cursors = this.input.keyboard.createCursorKeys();
-
-  bullets = this.physics.add.group({ classType: Phaser.Physics.Arcade.Image, maxSize:80 });
-  enemies = this.physics.add.group();
-
-  shootSound = this.sound.add("shoot",{volume:0.5});
-  hitSound = this.sound.add("hit",{volume:0.5});
-  missSound = this.sound.add("miss",{volume:0.5});
-  gameOverSound = this.sound.add("gameover",{volume:0.5});
-
-  // Animazione esplosione
-  this.anims.create({
-    key: "explode",
-    frames: this.anims.generateFrameNumbers("explosion", { start: 0, end: 7 }),
-    frameRate: 16,
-    hideOnComplete: true
-  });
-
-  this.time.addEvent({delay:700,loop:true,callback:()=>{if(!gameOver&&!paused) spawnEnemy(this);}});
-
-  this.physics.add.overlap(bullets,enemies,(b,e)=>{if(!gameOver&&!paused){
-    b.disableBody(true,true);
-    // Esplosione centrata sul nemico con scala variabile
-    const explosion = this.add.sprite(e.x,e.y,"explosion").setOrigin(0.5).setDepth(20);
-    explosion.setScale(explosionScale);
-    explosion.play("explode");
-    e.disableBody(true,true);
-    score++; scoreText.setText("Score:"+score); hitSound.play();
-    if(score % DIFFICULTY_STEP === 0) enemySpeedFactor *= SPEED_MULTIPLIER;
-  }});
-
-  scoreText=this.add.text(8,8,"Score:0",{font:"16px monospace",fill:"#fff"}).setDepth(10).setScrollFactor(0);
-  livesText=this.add.text(8,28,"Lives:"+lives,{font:"16px monospace",fill:"#fff"}).setDepth(10).setScrollFactor(0);
-
-  pauseText=this.add.text(S.w/2,S.h/2,"PAUSE",{font:"32px monospace",fill:"#ffff00"}).setOrigin(0.5).setDepth(50).setVisible(false);
-  pauseButton=this.add.text(S.w-48,10,"II",{font:"28px monospace",fill:"#fff"}).setInteractive().setDepth(15);
-  pauseButton.on("pointerdown",()=>togglePause(this));
-  this.input.keyboard.on("keydown-P",()=>togglePause(this));
-
-  this.scale.on("resize",()=>{const S3=sizes(this); ship.setDisplaySize(S3.ship,S3.ship); ship.y=S3.h-S3.bottomPad; ship.x=Phaser.Math.Clamp(ship.x,16,S3.w-16); pauseText.setPosition(S3.w/2,S3.h/2); pauseButton.setPosition(S3.w-48,10); enemies.children.iterate(e=>{if(e?.active)e.setDisplaySize(S3.enemy,S3.enemy);}); bullets.children.iterate(b=>{if(b?.active)b.setDisplaySize(S3.bullet,sizes(this).bullet);}); scoreText.setFontSize(Math.max(14,S3.w/40)).setPosition(8,8); livesText.setFontSize(Math.max(14,S3.w/40)).setPosition(8,28);});
-}
-
-// Volume e mute
-const volumeSlider=document.getElementById("volume-slider");
-volumeSlider.addEventListener("input",e=>{if(window.game) window.game.sound.volume=parseFloat(e.target.value);});
-const muteBtn=document.getElementById("mute-btn");
-let muted=false;
-muteBtn.addEventListener("click",()=>{muted=!muted;if(window.game) window.game.sound.mute=muted; muteBtn.textContent=muted?"🔇":"🔊";});
-
-// Cheat menu
-const bulletSpeedSlider=document.getElementById("bullet-speed-slider");
-bulletSpeedSlider.addEventListener("input",e=>{bulletSpeed=parseInt(e.target.value);});
-const gunCountInput=document.getElementById("gun-count");
-gunCountInput.addEventListener("input",e=>{gunCount=Math.min(5,Math.max(1,parseInt(e.target.value)));});
-const explosionScaleSlider=document.getElementById("explosion-scale-slider");
-explosionScaleSlider.addEventListener("input",e=>{explosionScale=parseFloat(e.target.value);});
-
-function update(time){
-  if(gameOver||paused) return;
-  const S = sizes(this); ship.setVelocity(0);
-
-  if(cursors.left?.isDown) ship.setVelocityX(-200); else if(cursors.right?.isDown) ship.setVelocityX(200);
-  if(cursors.up?.isDown) ship.setVelocityY(-200); else if(cursors.down?.isDown) ship.setVelocityY(200);
-  if(this.input.activePointer.isDown){ ship.x=Phaser.Math.Clamp(this.input.activePointer.x,16,S.w-16); ship.y=Phaser.Math.Clamp(this.input.activePointer.y,16,S.h-S.bottomPad); }
-
-  const fireInput=cursors.space?.isDown || (this.input.activePointer.isDown&&!cursors.left?.isDown&&!cursors.right?.isDown);
-  if(fireInput && time>lastShot+200){
-    const spread = 15;
-    for(let i=0;i<gunCount;i++){
-      const offset=(i-(gunCount-1)/2)*spread;
-      const b=bullets.get(ship.x,ship.y-20);
-      if(b){
-        b.enableBody(true,ship.x,ship.y-20,true,true)
-          .setTexture("bullet")
-          .setDisplaySize(sizes(this).bullet,sizes(this).bullet)
-          .setVelocity(offset,-bulletSpeed);
-        lastShot=time;
-        shootSound.play();
-      }
-    }
+// Ridimensiona il canvas e scala gli oggetti esistenti proporzionalmente
+function resize() {
+  const prevW = dims.w;
+  const prevH = dims.h;
+  const prevDims = dims;
+  dims = computeDims();
+  // Aggiorna dimensioni del canvas tenendo conto del devicePixelRatio per nitidezza
+  const ratio = window.devicePixelRatio || 1;
+  canvas.width = dims.w * ratio;
+  canvas.height = dims.h * ratio;
+  // Reset trasformation per evitare scaling cumulativo
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.scale(ratio, ratio);
+  // Scala posizione di nave, proiettili ed altri oggetti se esisteva una dimensione precedente
+  if (prevW && prevH) {
+    const scaleX = dims.w / prevW;
+    const scaleY = dims.h / prevH;
+    ship.x *= scaleX;
+    ship.y *= scaleY;
+    bullets.forEach(b => {
+      b.x *= scaleX;
+      b.y *= scaleY;
+    });
+    enemies.forEach(e => {
+      e.x *= scaleX;
+      e.y *= scaleY;
+    });
   }
-
-  bullets.children.iterate(b=>{if(b?.active&&(b.y<-32||b.y>sizes(this).h+32)) b.disableBody(true,true);});
-  enemies.children.iterate(e=>{if(e?.active&&e.y>ship.y+20){ e.disableBody(true,true); if(time>lastMissSound+300){missSound.play();lastMissSound=time;} lives--; livesText.setText("Lives:"+lives); if(lives<=0) triggerGameOver(this);}});
+  // Aggiorna grandezze
+  ship.size = dims.ship;
+  ship.y = dims.h - dims.bottomPad;
 }
 
-function spawnEnemy(scene){
-  const S=sizes(scene); const x=Phaser.Math.Between(20,S.w-20);
-  const e=enemies.create(x,-20,"enemy"); e.setDisplaySize(S.enemy,S.enemy).setActive(true).setVisible(true);
-  const vy=Phaser.Math.Between(80,140)*enemySpeedFactor;
-  if(e.body) e.body.setVelocity(0,vy); else e.setVelocity(0,vy);
+// Inizializza lo stato del gioco
+function init() {
+  dims = computeDims();
+  const ratio = window.devicePixelRatio || 1;
+  canvas.width = dims.w * ratio;
+  canvas.height = dims.h * ratio;
+  // Reset trasformazione e scala per il dispositivo corrente
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.scale(ratio, ratio);
+  ship.size = dims.ship;
+  ship.x = dims.w / 2;
+  ship.y = dims.h - dims.bottomPad;
+  bullets = [];
+  enemies = [];
+  score = 0;
+  lastShot = 0;
+  lastTime = performance.now();
 }
 
-function togglePause(scene){
-  if(gameOver) return;
-  paused=!paused;
-  pauseText.setVisible(paused);
-  pauseButton.setText(paused?"▶":"II");
-  paused?scene.physics.world.pause():scene.physics.world.resume();
-  document.getElementById("pause-ui").style.display = paused?"flex":"none";
+// Gestione tastiera
+window.addEventListener('keydown', e => { keys[e.code] = true; });
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+// Gestione pointer (mouse/touch)
+function pointerDown(e) {
+  pointerActive = true;
+  pointerX = e.clientX || (e.touches && e.touches[0].clientX) || 0;
+}
+function pointerMove(e) {
+  if (pointerActive) {
+    pointerX = e.clientX || (e.touches && e.touches[0].clientX) || 0;
+  }
+}
+function pointerUp() {
+  pointerActive = false;
+}
+canvas.addEventListener('mousedown', pointerDown);
+canvas.addEventListener('touchstart', pointerDown);
+canvas.addEventListener('mousemove', pointerMove);
+canvas.addEventListener('touchmove', pointerMove);
+canvas.addEventListener('mouseup', pointerUp);
+canvas.addEventListener('touchend', pointerUp);
+canvas.addEventListener('touchcancel', pointerUp);
+
+// Spawna un nemico alla sommità
+function spawnEnemy() {
+  const x = Math.random() * (dims.w - dims.enemy) + dims.enemy / 2;
+  const speed = Math.random() * (dims.base * 0.08) + dims.base * 0.10;
+  enemies.push({ x: x, y: -dims.enemy, speed: speed });
 }
 
-function triggerGameOver(scene){
-  gameOver=true; gameOverSound.play();
-  const cx=scene.scale.width/2,cy=scene.scale.height/2;
-  const overlay=scene.add.rectangle(cx,cy,scene.scale.width,scene.scale.height,0x000000,0.5).setDepth(20);
-  gameOverElements.push(overlay);
-  const goText=scene.add.text(cx,cy-120,"GAME OVER",{font:"32px monospace",fill:"#ff4444"}).setOrigin(0.5).setDepth(21);
-  const scoreDisplay=scene.add.text(cx,cy-80,"Score:"+score,{font:"20px monospace",fill:"#fff"}).setOrigin(0.5).setDepth(21);
-  gameOverElements.push(goText,scoreDisplay);
-
-  // Top 10
-  const KEY="phaser_highscores";
-  let list=JSON.parse(localStorage.getItem(KEY)||"[]");
-  list.push({score,date:new Date().toISOString()});
-  list.sort((a,b)=>b.score-a.score);
-  list=list.slice(0,10);
-  localStorage.setItem(KEY,JSON.stringify(list));
-  const hsText=list.map((r,i)=>`${i+1}. ${r.score}`).join("\n");
-  const highScores=scene.add.text(cx,cy-20,"Top 10:\n"+hsText,{font:"16px monospace",fill:"#ffff00",align:"center"}).setOrigin(0.5).setDepth(21);
-  gameOverElements.push(highScores);
-
-  // Restart button
-  const restartBtn=document.createElement("button");
-  restartBtn.textContent="Restart";
-  restartBtn.style.position="absolute";
-  restartBtn.style.left="50%";
-  restartBtn.style.top="80%";
-  restartBtn.style.transform="translate(-50%,0)";
-  restartBtn.style.zIndex=1000;
-  document.body.appendChild(restartBtn);
-  restartBtn.onclick=()=>location.reload();
+// Loop principale
+function loop() {
+  const now = performance.now();
+  const dt = (now - lastTime) / 1000; // secondi trascorsi
+  lastTime = now;
+  // Aggiorna posizioni
+  update(dt);
+  // Disegna scena
+  draw();
+  requestAnimationFrame(loop);
 }
+
+// Aggiornamento logica di gioco
+let enemySpawnTimer = 0;
+function update(dt) {
+  // Movimento nave con tastiera
+  const moveSpeed = dims.base * 0.8;
+  if (keys['ArrowLeft'] || keys['KeyA']) {
+    ship.x -= moveSpeed * dt;
+  }
+  if (keys['ArrowRight'] || keys['KeyD']) {
+    ship.x += moveSpeed * dt;
+  }
+  // Movimento con pointer
+  if (pointerActive) {
+    ship.x = pointerX;
+  }
+  // Clamp bordo
+  const half = ship.size / 2;
+  ship.x = Math.max(half, Math.min(dims.w - half, ship.x));
+  // Sparo
+  const now = performance.now();
+  if ((keys['Space'] || pointerActive) && now > lastShot + 200) {
+    bullets.push({ x: ship.x, y: ship.y - half, speed: dims.base * 0.9 });
+    lastShot = now;
+  }
+  // Aggiorna proiettili
+  bullets = bullets.filter(b => {
+    b.y -= b.speed * dt;
+    return b.y + dims.bulletH > 0;
+  });
+  // Aggiorna nemici
+  enemies = enemies.filter(e => {
+    e.y += e.speed * dt;
+    return e.y - dims.enemy < dims.h + dims.enemy;
+  });
+  // Collisioni proiettile-nemico
+  bullets.forEach((b, bi) => {
+    enemies.forEach((e, ei) => {
+      const distX = Math.abs(b.x - e.x);
+      const distY = Math.abs(b.y - e.y);
+      if (distX < (dims.bulletW + dims.enemy) / 2 && distY < (dims.bulletH + dims.enemy) / 2) {
+        bullets[bi]._hit = true;
+        enemies[ei]._hit = true;
+        score++;
+      }
+    });
+  });
+  bullets = bullets.filter(b => !b._hit);
+  enemies = enemies.filter(e => !e._hit);
+  // Timer spawn nemici
+  enemySpawnTimer += dt;
+  if (enemySpawnTimer >= 0.7) {
+    spawnEnemy();
+    enemySpawnTimer = 0;
+  }
+}
+
+// Disegna tutti gli elementi
+function draw() {
+  ctx.clearRect(0, 0, dims.w, dims.h);
+  // Disegna nave (triangolo bianco)
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(ship.x - ship.size / 2, ship.y + ship.size / 2);
+  ctx.lineTo(ship.x, ship.y - ship.size / 2);
+  ctx.lineTo(ship.x + ship.size / 2, ship.y + ship.size / 2);
+  ctx.closePath();
+  ctx.fill();
+  // Disegna proiettili (rettangoli gialli)
+  ctx.fillStyle = '#ffff00';
+  bullets.forEach(b => {
+    ctx.fillRect(b.x - dims.bulletW / 2, b.y - dims.bulletH / 2, dims.bulletW, dims.bulletH);
+  });
+  // Disegna nemici (cerchi rossi)
+  ctx.fillStyle = '#ff4444';
+  enemies.forEach(e => {
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, dims.enemy / 2, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  // Disegna punteggio
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '16px monospace';
+  ctx.textBaseline = 'top';
+  ctx.fillText(score.toString(), 8, 8);
+}
+
+// Gestisce ridimensionamento della finestra
+window.addEventListener('resize', () => {
+  resize();
+});
+
+// Avvia il gioco
+init();
+requestAnimationFrame(loop);
 </script>
 </body>
 </html>
