@@ -54,7 +54,7 @@ let explosionScale=1.0;
 function sizes(scene){
   const w=scene.scale.width||window.innerWidth;
   const h=scene.scale.height||window.innerHeight;
-  return { w,h, ship:w/10, enemy:(w/10)*ENEMY_SIZE_FACTOR, bullet:w/30, bottomPad:Math.max(48,h*0.08) };
+  return { w,h, ship:w/20, enemy:(w/08)*ENEMY_SIZE_FACTOR, bullet:w/30, bottomPad:Math.max(48,h*0.08) };
 }
 
 function preload(){
@@ -210,3 +210,4 @@ function triggerGameOver(scene){
 </script>
 </body>
 </html>
+
