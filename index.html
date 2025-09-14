@@ -1,46 +1,23 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Space Game - Phaser 3</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Space Game con astronave ingrandita</title>
 <style>
-html,
-body {
-  height: 100%;
-  margin: 0;
-  background: #000;
-  color: #fff;
-  font-family: monospace;
-  overflow: hidden;
+html, body {
+  height: 100%; margin: 0; background: #000; color: #fff; font-family: monospace; overflow: hidden;
 }
 #game {
-  width: 100%;
-  height: 100vh;
-  overflow: hidden;
-  position: relative;
+  width: 100%; height: 100vh; overflow: hidden; position: relative;
 }
 .pause-ui {
-  position: absolute;
-  top: 50px;
-  right: 50px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  color: #fff;
-  font-family: monospace;
+  position: absolute; top: 50px; right: 50px; display: flex; flex-direction: column; gap: 8px; color: #fff; font-family: monospace;
 }
-button,
-input {
-  font-family: monospace;
-  padding: 4px 8px;
-  background: #333;
-  color: #fff;
-  border: none;
-  cursor: pointer;
+button, input {
+  font-family: monospace; padding: 4px 8px; background: #333; color: #fff; border:none; cursor:pointer;
 }
-input[type='range'],
-input[type='number'] {
+input[type=range], input[type=number] {
   width: 150px;
 }
 #countdown-container {
@@ -89,15 +66,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const explosionScaleSlider = document.getElementById('explosion-scale-slider');
   const gunDistanceSlider = document.getElementById('gun-distance-slider');
 
-  // Conto alla rovescia elementi
   const countdownContainer = document.getElementById('countdown-container');
   const countdownNumberEl = document.getElementById('countdown-number');
   const countdownMessageEl = document.getElementById('countdown-message');
 
-  // Messaggio configurabile in grassetto sopra il conto alla rovescia
   const countdownMessage = "Distruggi i Fabio prima che invadano l'universo";
 
-  // Pulsante pausa in alto a destra
   const pauseBtn = document.createElement('button');
   pauseBtn.textContent = "⏸";
   pauseBtn.style.position = "absolute";
@@ -111,33 +85,31 @@ document.addEventListener('DOMContentLoaded', () => {
   pauseBtn.style.padding = "8px";
   gameContainer.appendChild(pauseBtn);
 
-  const canvas = document.createElement("canvas");
-  canvas.style.display = "block";
-  canvas.style.width = "100%";
-  canvas.style.height = "100%";
-  canvas.style.background = "#000";
+  const canvas = document.createElement('canvas');
+  canvas.style.display = 'block';
+  canvas.style.width = '100%';
+  canvas.style.height = '100%';
+  canvas.style.background = '#000';
   gameContainer.appendChild(canvas);
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext('2d');
 
-  // Audio
-  const shootSound = new Audio("assets/shoot.mp3");
-  const hitSound = new Audio("assets/hit.mp3");
-  const missSound = new Audio("assets/miss.mp3");
-  const gameOverSound = new Audio("assets/gameover.mp3");
-  const bgMusic = new Audio("assets/background.mp3");
+  const shipImg = new Image();
+  shipImg.src = 'assets/ship.png';
+
+  const monsterImg = new Image();
+  monsterImg.src = 'assets/monster.png';
+
+  const bulletImg = new Image();
+  bulletImg.src = 'assets/bullet.png';
+
+  const shootSound = new Audio('assets/shoot.mp3');
+  const hitSound = new Audio('assets/hit.mp3');
+  const missSound = new Audio('assets/miss.mp3');
+  const gameOverSound = new Audio('assets/gameover.mp3');
+  const bgMusic = new Audio('assets/background.mp3');
   bgMusic.loop = true;
 
-  // Stato variabili
-  let dims = {
-    w: 0,
-    h: 0,
-    base: 0,
-    ship: 0,
-    enemy: 0,
-    bulletW: 0,
-    bulletH: 0,
-    bottomPad: 0,
-  };
+  let dims = { w: 0, h: 0, base: 0, ship: 0, enemy: 0, bulletW: 0, bulletH: 0, bottomPad: 0 };
   let ship = { x: 0, y: 0, size: 0 };
   let bullets = [];
   let enemies = [];
@@ -157,7 +129,6 @@ document.addEventListener('DOMContentLoaded', () => {
   let pointerX = 0;
   let pointerY = 0;
 
-  // Config personalizzabili
   let bulletSpeed = parseInt(bulletSpeedSlider.value) || 300;
   let gunCount = parseInt(gunCountInput.value) || 1;
   let gunDistance = parseInt(gunDistanceSlider.value) || 28;
@@ -165,10 +136,10 @@ document.addEventListener('DOMContentLoaded', () => {
   let effectsVolume = parseFloat(effectsVolSlider.value) || 0.5;
   let musicVolume = parseFloat(musicVolSlider.value) || 0.5;
   let muted = false;
-  let resumeDelay = 1.0; // secondi delay ripresa
+  let resumeDelay = 1.0;
 
-  function updateVolume() {
-    [shootSound, hitSound, missSound, gameOverSound].forEach((snd) => {
+  function updateVolume(){
+    [shootSound, hitSound, missSound, gameOverSound].forEach(snd=>{
       snd.volume = effectsVolume;
       snd.muted = muted;
     });
@@ -177,44 +148,43 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   updateVolume();
 
-  function computeDims() {
+  function computeDims(){
     const w = gameContainer.clientWidth;
     const h = gameContainer.clientHeight;
-    const base = Math.min(w, h);
+    const base = Math.min(w,h);
     return {
-      w,
-      h,
-      base,
-      ship: base * 0.08,
+      w, h, base,
+      ship: base * 0.50,    // INGRANDITO DA 0.08 A 0.12
       enemy: base * 0.1 * 3.0,
-      bulletW: base * 0.02,
-      bulletH: base * 0.04,
+      bulletW: base * 0.015,
+      bulletH: base * 0.03,
       bottomPad: Math.max(48, h * 0.08),
     };
   }
-  function resize() {
+
+  function resize(){
     const prevW = dims.w;
     const prevH = dims.h;
     dims = computeDims();
     const ratio = window.devicePixelRatio || 1;
     canvas.width = dims.w * ratio;
     canvas.height = dims.h * ratio;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.scale(ratio, ratio);
-    if (prevW && prevH) {
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.scale(ratio,ratio);
+    if(prevW && prevH){
       const scaleX = dims.w / prevW;
       const scaleY = dims.h / prevH;
       ship.x *= scaleX;
       ship.y *= scaleY;
-      bullets.forEach((b) => {
+      bullets.forEach(b=>{
         b.x *= scaleX;
         b.y *= scaleY;
       });
-      enemies.forEach((e) => {
+      enemies.forEach(e=>{
         e.x *= scaleX;
         e.y *= scaleY;
       });
-      explosions.forEach((ex) => {
+      explosions.forEach(ex=>{
         ex.x *= scaleX;
         ex.y *= scaleY;
         ex.maxRadius = dims.enemy * explosionScale;
@@ -223,13 +193,14 @@ document.addEventListener('DOMContentLoaded', () => {
     ship.size = dims.ship;
     ship.y = dims.h - dims.bottomPad;
   }
-  function init() {
+
+  function init(){
     dims = computeDims();
     const ratio = window.devicePixelRatio || 1;
     canvas.width = dims.w * ratio;
     canvas.height = dims.h * ratio;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.scale(ratio, ratio);
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.scale(ratio,ratio);
     ship.size = dims.ship;
     ship.x = dims.w / 2;
     ship.y = dims.h - dims.bottomPad;
@@ -245,153 +216,184 @@ document.addEventListener('DOMContentLoaded', () => {
     gameOver = false;
     gunCount = 1;
     gunCountInput.value = gunCount;
-    const oldOverlay = document.getElementById("gameover-overlay");
-    if (oldOverlay) oldOverlay.remove();
+    const oldOverlay = document.getElementById('gameover-overlay');
+    if(oldOverlay) oldOverlay.remove();
     pauseUI.style.display = "none";
     updateVolume();
   }
 
-  window.addEventListener("keydown", (e) => {
-    keys[e.code] = true;
-  });
-  window.addEventListener("keyup", (e) => {
-    keys[e.code] = false;
-  });
+  window.addEventListener('keydown', e=>{keys[e.code]=true;});
+  window.addEventListener('keyup', e=>{keys[e.code]=false;});
 
-  function pointerDown(e) {
+  function pointerDown(e){
     pointerActive = true;
     pointerX = e.touches ? e.touches[0].clientX : e.clientX;
     pointerY = e.touches ? e.touches[0].clientY : e.clientY;
   }
-  function pointerMove(e) {
-    if (pointerActive) {
+  function pointerMove(e){
+    if(pointerActive){
       pointerX = e.touches ? e.touches[0].clientX : e.clientX;
       pointerY = e.touches ? e.touches[0].clientY : e.clientY;
     }
   }
-  function pointerUp() {
-    pointerActive = false;
-  }
-  canvas.addEventListener("mousedown", pointerDown);
-  canvas.addEventListener("touchstart", pointerDown);
-  canvas.addEventListener("mousemove", pointerMove);
-  canvas.addEventListener("touchmove", pointerMove);
-  canvas.addEventListener("mouseup", pointerUp);
-  canvas.addEventListener("touchend", pointerUp);
-  canvas.addEventListener("touchcancel", pointerUp);
+  function pointerUp(){pointerActive = false;}
+  canvas.addEventListener('mousedown', pointerDown);
+  canvas.addEventListener('touchstart', pointerDown);
+  canvas.addEventListener('mousemove', pointerMove);
+  canvas.addEventListener('touchmove', pointerMove);
+  canvas.addEventListener('mouseup', pointerUp);
+  canvas.addEventListener('touchend', pointerUp);
+  canvas.addEventListener('touchcancel', pointerUp);
 
-  function spawnEnemy() {
+  function spawnEnemy(){
     const x = Math.random() * (dims.w - dims.enemy) + dims.enemy / 2;
     const speed = (Math.random() * (dims.base * 0.08) + dims.base * 0.1) * enemySpeedFactor;
-    enemies.push({ x, y: -dims.enemy, speed });
+    enemies.push({x, y:-dims.enemy, speed});
   }
 
   let lastTime = performance.now();
 
-  function update(dt) {
-    if (paused || gameOver) return;
+  function update(dt){
+    if(paused || gameOver) return;
     const moveSpeed = dims.base * 0.8;
-    if (keys["ArrowLeft"] || keys["KeyA"]) ship.x -= moveSpeed * dt;
-    if (keys["ArrowRight"] || keys["KeyD"]) ship.x += moveSpeed * dt;
-    if (keys["ArrowUp"] || keys["KeyW"]) ship.y -= moveSpeed * dt;
-    if (keys["ArrowDown"] || keys["KeyS"]) ship.y += moveSpeed * dt;
-    if (pointerActive) {
+    if(keys['ArrowLeft']||keys['KeyA']) ship.x -= moveSpeed*dt;
+    if(keys['ArrowRight']||keys['KeyD']) ship.x += moveSpeed*dt;
+    if(keys['ArrowUp']||keys['KeyW']) ship.y -= moveSpeed*dt;
+    if(keys['ArrowDown']||keys['KeyS']) ship.y += moveSpeed*dt;
+    if(pointerActive){
       ship.x = pointerX;
       ship.y = pointerY;
     }
-    const half = ship.size / 2;
+    const half = ship.size/2;
     ship.x = Math.max(half, Math.min(dims.w - half, ship.x));
     ship.y = Math.max(half, Math.min(dims.h - dims.bottomPad, ship.y));
     const now = performance.now();
-    const fireInput = keys["Space"] || pointerActive;
-    if (fireInput && now > lastShot + 200) {
+    const fireInput = keys['Space'] || pointerActive;
+    if(fireInput && now > lastShot + 200){
       const spread = gunDistance;
-      const halfShip = ship.size / 2;
-      for (let i = 0; i < gunCount; i++) {
-        const offset = (i - (gunCount - 1) / 2) * spread;
-        bullets.push({ x: ship.x + offset, y: ship.y - halfShip, speed: bulletSpeed });
+      const halfShip = ship.size/2;
+      for(let i=0; i<gunCount; i++){
+        const offset = (i - (gunCount - 1)/2) * spread;
+        bullets.push({x: ship.x + offset, y: ship.y - halfShip, speed: bulletSpeed});
       }
       lastShot = now;
       shootSound.currentTime = 0;
       shootSound.play();
     }
-    bullets = bullets.filter((b) => {
-      b.y -= b.speed * dt;
+    bullets = bullets.filter(b=>{
+      b.y -= b.speed*dt;
       return b.y + dims.bulletH > 0;
     });
-    enemies = enemies.filter((e) => {
-      e.y += e.speed * dt;
-      if (e.y - dims.enemy / 2 > dims.h) {
+    enemies = enemies.filter(e=>{
+      e.y += e.speed*dt;
+      if(e.y - dims.enemy/2 > dims.h){
         lives--;
         missSound.currentTime = 0;
         missSound.play();
-        if (lives <= 0) triggerGameOver();
+        if(lives <= 0) triggerGameOver();
         return false;
       }
       return true;
     });
-    bullets.forEach((b, bi) => {
-      enemies.forEach((e, ei) => {
+    bullets.forEach((b, bi)=>{
+      enemies.forEach((e, ei)=>{
         const dx = Math.abs(b.x - e.x);
         const dy = Math.abs(b.y - e.y);
-        if (dx < (dims.bulletW + dims.enemy) / 2 && dy < (dims.bulletH + dims.enemy) / 2) {
+        if(dx < (dims.bulletW + dims.enemy)/2 && dy < (dims.bulletH + dims.enemy)/2){
           bullets[bi]._hit = true;
           enemies[ei]._hit = true;
           score++;
-          if (score % DIFFICULTY_STEP === 0) enemySpeedFactor *= SPEED_MULTIPLIER;
-          if (score % CANNON_UP_STEP === 0 && gunCount < 3) {
+          if(score % DIFFICULTY_STEP === 0) enemySpeedFactor *= SPEED_MULTIPLIER;
+          if(score % CANNON_UP_STEP === 0 && gunCount < 3){
             gunCount++;
             gunCountInput.value = gunCount;
           }
-          explosions.push({ x: e.x, y: e.y, radius: 0, maxRadius: dims.enemy * explosionScale, alpha: 1 });
+          explosions.push({x: e.x, y: e.y, radius: 0, maxRadius: dims.enemy*explosionScale, alpha: 1});
           hitSound.currentTime = 0;
           hitSound.play();
         }
       });
     });
-    bullets = bullets.filter((b) => !b._hit);
-    enemies = enemies.filter((e) => !e._hit);
-    explosions = explosions.filter((ex) => {
-      ex.radius += dims.base * 0.5 * dt;
-      ex.alpha -= dt * 1.5;
+    bullets = bullets.filter(b=>!b._hit);
+    enemies = enemies.filter(e=>!e._hit);
+    explosions = explosions.filter(ex=>{
+      ex.radius += dims.base*0.5*dt;
+      ex.alpha -= dt*1.5;
       return ex.alpha > 0;
     });
     enemySpawnTimer += dt;
-    if (enemySpawnTimer >= 0.7) {
+    if(enemySpawnTimer >= 0.7){
       spawnEnemy();
       enemySpawnTimer = 0;
     }
   }
 
-  function draw() {
+  function draw(){
     ctx.clearRect(0, 0, dims.w, dims.h);
-    // Nave
-    ctx.fillStyle = "#ffffff";
-    ctx.beginPath();
-    ctx.moveTo(ship.x - ship.size / 2, ship.y + ship.size / 2);
-    ctx.lineTo(ship.x, ship.y - ship.size / 2);
-    ctx.lineTo(ship.x + ship.size / 2, ship.y + ship.size / 2);
-    ctx.closePath();
-    ctx.fill();
-    // Proiettili
-    ctx.fillStyle = "#ffff00";
-    bullets.forEach((b) => {
-      ctx.fillRect(b.x - dims.bulletW / 2, b.y - dims.bulletH / 2, dims.bulletW, dims.bulletH);
-    });
-    // Nemici
-    ctx.fillStyle = "#ff4444";
-    enemies.forEach((e) => {
+
+    // Disegna astronave con immagine scalata dinamicamente
+    if(shipImg.complete){
+      ctx.drawImage(shipImg,
+        ship.x - dims.ship/2,
+        ship.y - dims.ship/2,
+        dims.ship,
+        dims.ship
+      );
+    } else {
+      ctx.fillStyle ="#ffffff";
       ctx.beginPath();
-      ctx.arc(e.x, e.y, dims.enemy / 2, 0, Math.PI * 2);
+      ctx.moveTo(ship.x - ship.size/2, ship.y + ship.size/2);
+      ctx.lineTo(ship.x, ship.y - ship.size/2);
+      ctx.lineTo(ship.x + ship.size/2, ship.y + ship.size/2);
+      ctx.closePath();
       ctx.fill();
+    }
+
+    // Disegna proiettili con immagine
+    if(bulletImg.complete){
+      bullets.forEach(b => {
+        ctx.drawImage(bulletImg,
+          b.x - dims.bulletW/2,
+          b.y - dims.bulletH/2,
+          dims.bulletW,
+          dims.bulletH);
+      });
+    } else {
+      ctx.fillStyle = "#ffff00";
+      bullets.forEach(b => {
+        ctx.fillRect(
+          b.x - dims.bulletW/2,
+          b.y - dims.bulletH/2,
+          dims.bulletW,
+          dims.bulletH
+        );
+      });
+    }
+
+    // Disegna nemici con immagine scalata
+    enemies.forEach(e => {
+      if(monsterImg.complete){
+        ctx.drawImage(monsterImg,
+          e.x - dims.enemy/2,
+          e.y - dims.enemy/2,
+          dims.enemy,
+          dims.enemy);
+      } else {
+        ctx.fillStyle = "#ff4444";
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, dims.enemy/2, 0, Math.PI*2);
+        ctx.fill();
+      }
     });
+
     // Esplosioni
-    explosions.forEach((ex) => {
+    explosions.forEach(ex => {
       ctx.fillStyle = `rgba(255,165,0,${ex.alpha.toFixed(3)})`;
       ctx.beginPath();
-      ctx.arc(ex.x, ex.y, ex.radius, 0, Math.PI * 2);
+      ctx.arc(ex.x, ex.y, ex.radius, 0, Math.PI*2);
       ctx.fill();
     });
+
     // Punteggio e vite
     ctx.fillStyle = "#ffffff";
     ctx.font = "16px monospace";
@@ -399,32 +401,32 @@ document.addEventListener('DOMContentLoaded', () => {
     ctx.textAlign = "left";
     ctx.fillText("Score:" + score, 8, 8);
     ctx.fillText("Lives:" + lives, 8, 28);
-    // Testo pausa
-    if (paused && !gameOver) {
+
+    if(paused && !gameOver){
       ctx.fillStyle = "#ffff00";
       ctx.font = "32px monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("PAUSA", dims.w / 2, dims.h / 2);
+      ctx.fillText("PAUSA", dims.w/2, dims.h/2);
     }
   }
 
-  function loop() {
+  function loop(){
     const now = performance.now();
-    const dt = (now - lastTime) / 1000;
+    const dt = (now-lastTime)/1000;
     lastTime = now;
-    if (!paused) update(dt);
+    if(!paused) update(dt);
     draw();
     requestAnimationFrame(loop);
   }
 
-  function togglePause() {
-    if (gameOver) return;
-    if (!paused) {
+  function togglePause(){
+    if(gameOver) return;
+    if(!paused){
       paused = true;
       pauseUI.style.display = "flex";
       pauseBtn.style.backgroundColor = "#666";
-      [shootSound, hitSound, missSound, gameOverSound].forEach((snd) => snd.pause());
+      [shootSound, hitSound, missSound, gameOverSound].forEach(snd=>snd.pause());
       return;
     }
     pauseUI.style.display = "none";
@@ -432,15 +434,16 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
       paused = false;
       lastTime = performance.now();
-    }, resumeDelay * 1000);
+    }, resumeDelay*1000);
   }
 
-  function triggerGameOver() {
-    if (gameOver) return;
+  function triggerGameOver(){
+    if(gameOver) return;
     gameOver = true;
     paused = true;
     gameOverSound.currentTime = 0;
     gameOverSound.play();
+
     const overlay = document.createElement("div");
     overlay.id = "gameover-overlay";
     overlay.style.position = "absolute";
@@ -456,30 +459,35 @@ document.addEventListener('DOMContentLoaded', () => {
     overlay.style.color = "#fff";
     overlay.style.fontFamily = "monospace";
     overlay.style.zIndex = 1000;
+
     const goText = document.createElement("div");
     goText.textContent = "GAME OVER";
     goText.style.fontSize = "32px";
     goText.style.color = "#ff4444";
     goText.style.marginBottom = "16px";
     overlay.appendChild(goText);
+
     const scoreDisplay = document.createElement("div");
     scoreDisplay.textContent = "Score: " + score;
     scoreDisplay.style.fontSize = "20px";
     scoreDisplay.style.marginBottom = "16px";
     overlay.appendChild(scoreDisplay);
+
     const KEY = "phaser_highscores";
     let list = JSON.parse(localStorage.getItem(KEY) || "[]");
-    list.push({ score: score, date: new Date().toISOString() });
-    list.sort((a, b) => b.score - a.score);
-    list = list.slice(0, 10);
+    list.push({score: score, date: new Date().toISOString()});
+    list.sort((a,b) => b.score - a.score);
+    list = list.slice(0,10);
     localStorage.setItem(KEY, JSON.stringify(list));
+
     const hs = document.createElement("div");
     hs.style.fontSize = "16px";
     hs.style.color = "#ffff00";
     hs.style.whiteSpace = "pre";
     hs.style.textAlign = "center";
-    hs.textContent = "Top 10:\n" + list.map((r, i) => `${i + 1}. ${r.score}`).join("\n");
+    hs.textContent = "Top 10:\n"+list.map((r,i)=>`${i+1}. ${r.score}`).join("\n");
     overlay.appendChild(hs);
+
     const restartBtn = document.createElement("button");
     restartBtn.textContent = "Restart";
     restartBtn.style.marginTop = "20px";
@@ -495,15 +503,16 @@ document.addEventListener('DOMContentLoaded', () => {
       startCountdown();
     };
     overlay.appendChild(restartBtn);
+
     document.body.appendChild(overlay);
     pauseBtn.style.display = "";
   }
 
-  effectsVolSlider.addEventListener("input", (e) => {
+  effectsVolSlider.addEventListener("input", e => {
     effectsVolume = parseFloat(e.target.value);
     updateVolume();
   });
-  musicVolSlider.addEventListener("input", (e) => {
+  musicVolSlider.addEventListener("input", e => {
     musicVolume = parseFloat(e.target.value);
     updateVolume();
   });
@@ -511,35 +520,31 @@ document.addEventListener('DOMContentLoaded', () => {
     muted = !muted;
     updateVolume();
     muteBtn.textContent = muted ? "🔇" : "🔊";
-    if (muted) bgMusic.pause();
-    else if (!paused) bgMusic.play();
+    if(muted) bgMusic.pause();
+    else if(!paused) bgMusic.play();
   });
-  bulletSpeedSlider.addEventListener("input", (e) => {
+  bulletSpeedSlider.addEventListener("input", e => {
     bulletSpeed = parseInt(e.target.value);
   });
-  gunCountInput.addEventListener("input", (e) => {
+  gunCountInput.addEventListener("input", e => {
     const val = parseInt(e.target.value);
-    gunCount = Math.min(10, Math.max(1, val));
+    gunCount = Math.min(10, Math.max(1,val));
     gunCountInput.value = gunCount;
   });
-  explosionScaleSlider.addEventListener("input", (e) => {
+  explosionScaleSlider.addEventListener("input", e => {
     explosionScale = parseFloat(e.target.value);
-    explosions.forEach((ex) => {
-      ex.maxRadius = dims.enemy * explosionScale;
-    });
+    explosions.forEach(ex => ex.maxRadius = dims.enemy * explosionScale);
   });
-  gunDistanceSlider.addEventListener("input", (e) => {
+  gunDistanceSlider.addEventListener("input", e => {
     gunDistance = parseInt(e.target.value);
   });
 
   pauseBtn.onclick = togglePause;
-  window.addEventListener("resize", resize);
+  window.addEventListener('resize', resize);
 
-  [shootSound, hitSound, missSound, gameOverSound, bgMusic].forEach((snd) => {
-    snd.preload = "auto";
-  });
+  [shootSound, hitSound, missSound, gameOverSound, bgMusic].forEach(snd => snd.preload = "auto");
 
-  function startCountdown() {
+  function startCountdown(){
     countdownContainer.style.display = "block";
     countdownMessageEl.textContent = countdownMessage;
     let count = 3;
@@ -547,12 +552,12 @@ document.addEventListener('DOMContentLoaded', () => {
     paused = true;
     const intervalId = setInterval(() => {
       count--;
-      if (count === 0) {
+      if(count === 0){
         clearInterval(intervalId);
         countdownContainer.style.display = "none";
         paused = false;
         lastTime = performance.now();
-        if (!muted) bgMusic.play();
+        if(!muted) bgMusic.play();
       } else {
         countdownNumberEl.textContent = count;
       }
